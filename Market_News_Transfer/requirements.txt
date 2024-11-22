@@ -1,0 +1,4 @@
+google-cloud-bigquery
+pandas
+flask
+db-dtypes

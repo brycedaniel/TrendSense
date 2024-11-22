@@ -1,0 +1,9 @@
+newspaper3k
+lxml
+lxml_html_clean
+yfinance
+pandas
+google-cloud-bigquery
+requests
+beautifulsoup4
+nltk
