@@ -1,0 +1,8 @@
+pyarrow
+flask==2.3.2
+pandas==1.5.3
+yfinance==0.2.31
+textblob==0.17.1
+google-cloud-bigquery==3.11.4
+numpy==1.21.6
+newspaper3k==0.2.8
