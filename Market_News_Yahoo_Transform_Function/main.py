@@ -1,5 +1,6 @@
 import logging
 from typing import Tuple, Optional, List
+import pytz
 
 from google.cloud import bigquery
 from textblob import TextBlob
@@ -122,7 +123,12 @@ class YahooNewsProcessor:
             existing_dates = self.client.query(existing_dates_query).to_dataframe()
 
             # Filter out rows with existing publish dates
+            # Ensure consistent string format for comparison
+            data['publish_date'] = data['publish_date'].astype(str)
+            existing_dates['publish_date'] = existing_dates['publish_date'].astype(str)
             new_data = data[~data['publish_date'].isin(existing_dates['publish_date'])]
+
+            
 
             # Log filtering results
             total_rows = len(data)
@@ -172,6 +178,21 @@ class YahooNewsProcessor:
             # Clean data
             new_data = new_data.dropna(subset=['ticker'])
             new_data = new_data[new_data['ticker'].str.strip() != '']
+            
+            import pytz
+
+            
+            # Convert 'publish_date' time from UTC to MST while retaining the date
+            # Convert from UTC to MST and remove timezone info
+            mst = pytz.timezone('MST')
+            new_data['publish_date'] = (
+                pd.to_datetime(new_data['publish_date'], errors='coerce')  # Ensure valid datetime
+                .dt.tz_localize('UTC')  # Localize to UTC
+                .dt.tz_convert(mst)  # Convert to MST
+                .dt.strftime('%Y-%m-%d %H:%M:%S')  # Format without timezone
+)
+
+
 
             if new_data.empty:
                 self.logger.info("All rows were invalid after cleaning. No data to insert.")

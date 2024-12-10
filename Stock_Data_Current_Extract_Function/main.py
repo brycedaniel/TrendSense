@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime
 from google.cloud import bigquery
+import pytz
 
 # Define BigQuery dataset and table
 PROJECT_ID = "trendsense"
@@ -33,8 +34,9 @@ def fetch_current_stock_data(request):
             else:
                 percent_difference = None
 
+            mst = pytz.timezone('MST')
             current_data = {
-                "Date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "Date": datetime.now(pytz.utc).astimezone(mst).strftime('%Y-%m-%d %H:%M:%S'),
                 "Ticker": ticker,
                 "Current_Price": current_price,
                 "Open": info.get("open"),

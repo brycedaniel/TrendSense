@@ -1,0 +1,13 @@
+pyarrow
+pandas
+yfinance
+textblob
+newspaper3k
+google-cloud-bigquery
+flask
+lxml[html_clean]
+transformers==4.34.0
+torch==2.0.1
+requests==2.31.0
+nltk==3.8.1
+pytz
