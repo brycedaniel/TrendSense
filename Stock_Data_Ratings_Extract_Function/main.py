@@ -1,14 +1,10 @@
-import os
 import requests
-import functions_framework
+import time
+from flask import jsonify
 from google.cloud import bigquery
-from datetime import datetime
 
-# Configuration
-API_KEY = os.environ.get('FMP_API_KEY')  # Store API key in environment variables
-PROJECT_ID = 'trendsense'
-DATASET_ID = 'stockdata'
-TABLE_ID = 'stock_data_ratings'
+# Your FMP API Key
+API_KEY = "DKhbgwU29WSYBQlGkdkYjAomzvDQRVE0"
 
 # List of stock symbols
 SYMBOLS = [
@@ -17,107 +13,128 @@ SYMBOLS = [
     'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS', 'META'
 ]
 
-def get_company_rating(symbol, api_key):
+# BigQuery table details
+PROJECT_ID = "trendsense"  # Replace with your GCP project ID
+DATASET_ID = "stock_data"
+TABLE_ID = "stock_ratings"
+
+
+def get_company_rating(symbol):
     """
     Fetch company rating for a given stock symbol from Financial Modeling Prep API
     """
-    url = f"https://financialmodelingprep.com/api/v3/rating/{symbol}?apikey={api_key}"
+    url = f"https://financialmodelingprep.com/api/v3/rating/{symbol}?apikey={API_KEY}"
     
     try:
         response = requests.get(url)
-        
         if response.status_code == 200:
             data = response.json()
-            
             if data:
-                # Extract the first result
                 rating_data = data[0]
                 return {
-                    'symbol': symbol,
-                    'fetch_timestamp': datetime.utcnow().isoformat(),
-                    'date': rating_data.get('date', 'No date available'),
-                    'overall_rating': rating_data.get('rating'),
-                    'recommendation': rating_data.get('ratingRecommendation'),
-                    'rating_score': rating_data.get('ratingScore'),
-                    'dcf_score': rating_data.get('ratingDetailsDCFScore'),
-                    'dcf_recommendation': rating_data.get('ratingDetailsDCFRecommendation'),
-                    'roe_score': rating_data.get('ratingDetailsROEScore'),
-                    'roe_recommendation': rating_data.get('ratingDetailsROERecommendation'),
-                    'roa_score': rating_data.get('ratingDetailsROAScore'),
-                    'roa_recommendation': rating_data.get('ratingDetailsROARecommendation'),
-                    'pe_score': rating_data.get('ratingDetailsPEScore'),
-                    'pe_recommendation': rating_data.get('ratingDetailsPERecommendation'),
-                    'pb_score': rating_data.get('ratingDetailsPBScore'),
-                    'pb_recommendation': rating_data.get('ratingDetailsPBRecommendation')
+                    'Symbol': symbol,
+                    'Date': rating_data.get('date', 'No date available'),
+                    'OverallRating': rating_data.get('rating'),
+                    'Recommendation': rating_data.get('ratingRecommendation'),
+                    'RatingScore': rating_data.get('ratingScore'),
+                    'DCFScore': rating_data.get('ratingDetailsDCFScore'),
+                    'DCFRecommendation': rating_data.get('ratingDetailsDCFRecommendation'),
+                    'ROEScore': rating_data.get('ratingDetailsROEScore'),
+                    'ROERecommendation': rating_data.get('ratingDetailsROERecommendation'),
+                    'ROAScore': rating_data.get('ratingDetailsROAScore'),
+                    'ROARecommendation': rating_data.get('ratingDetailsROARecommendation'),
+                    'PEScore': rating_data.get('ratingDetailsPEScore'),
+                    'PERecommendation': rating_data.get('ratingDetailsPERecommendation'),
+                    'PBScore': rating_data.get('ratingDetailsPBScore'),
+                    'PBRecommendation': rating_data.get('ratingDetailsPBRecommendation')
                 }
-            else:
-                print(f"No company rating data available for {symbol}.")
-                return None
-        else:
-            print(f"Failed to fetch data for {symbol}. HTTP Status Code: {response.status_code}")
-            return None
-    
+        return None
     except Exception as e:
-        print(f"An error occurred while fetching data for {symbol}: {e}")
+        print(f"Error fetching data for {symbol}: {e}")
         return None
 
-@functions_framework.http
-def fetch_and_store_stock_ratings(request):
+
+def fetch_ratings():
     """
-    Google Cloud Function to fetch stock ratings and store in BigQuery
+    Fetch ratings for all symbols and return as a list
     """
-    # Validate the API key
-    if not API_KEY:
-        return ('API key is not configured', 500)
-
-    # Initialize BigQuery client
-    client = bigquery.Client(project=PROJECT_ID)
-    
-    # Prepare the table reference
-    table_ref = client.dataset(DATASET_ID).table(TABLE_ID)
-    table = client.get_table(table_ref)
-
-    # Collect ratings
-    ratings_to_insert = []
-    error_symbols = []
-
-    # Fetch ratings for each symbol
+    all_ratings = []
     for symbol in SYMBOLS:
+        print(f"Fetching rating for {symbol}...")
+        rating = get_company_rating(symbol)
+        if rating:
+            all_ratings.append(rating)
+        time.sleep(0.5)  # Pause to avoid hitting API rate limits
+    return all_ratings
+
+
+def create_table_if_not_exists(client, dataset_id, table_id):
+    """
+    Create a BigQuery table if it does not exist
+    """
+    dataset_ref = client.dataset(dataset_id)
+    table_ref = dataset_ref.table(table_id)
+    
+    try:
+        client.get_table(table_ref)  # Check if table exists
+        print(f"Table {table_id} already exists.")
+    except Exception:
+        print(f"Table {table_id} does not exist. Creating it...")
+        dataset = bigquery.Dataset(dataset_ref)
+        client.create_dataset(dataset, exists_ok=True)  # Ensure dataset exists
+        
+        # Create an empty table
+        schema = []  # Auto-detect schema when loading data
+        table = bigquery.Table(table_ref, schema=schema)
+        client.create_table(table)
+        print(f"Table {table_id} created successfully.")
+
+
+def insert_into_bigquery(data):
+    """
+    Insert data into BigQuery table, creating it if necessary
+    """
+    client = bigquery.Client(project=PROJECT_ID)
+    create_table_if_not_exists(client, DATASET_ID, TABLE_ID)
+    
+    table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
+    job_config = bigquery.LoadJobConfig(
+        autodetect=True,  # Automatically detect schema
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND  # Append data to table
+    )
+    
+    try:
+        load_job = client.load_table_from_json(data, table_ref, job_config=job_config)
+        load_job.result()  # Wait for job to complete
+        print(f"Successfully inserted {len(data)} rows into BigQuery.")
+    except Exception as e:
+        print(f"Error while inserting data into BigQuery: {e}")
+
+
+def main(request):
+    """
+    Entry point for the Google Cloud Function
+    """
+    # Fetch ratings
+    ratings = fetch_ratings()
+    
+    if ratings:
         try:
-            rating = get_company_rating(symbol, API_KEY)
-            
-            if rating:
-                ratings_to_insert.append(rating)
-            else:
-                error_symbols.append(symbol)
-        
+            # Insert ratings into BigQuery
+            insert_into_bigquery(ratings)
+            return jsonify({
+                "message": f"Successfully stored ratings for {len(ratings)} stocks in BigQuery.",
+                "status": "success"
+            })
         except Exception as e:
-            print(f"Error processing {symbol}: {e}")
-            error_symbols.append(symbol)
-
-    # Insert rows into BigQuery
-    if ratings_to_insert:
-        errors = client.insert_rows(table, ratings_to_insert)
-        
-        if errors:
-            print(f"Errors inserting rows: {errors}")
-            return (f'Partial failure. Errors inserting rows. Symbols with errors: {error_symbols}', 206)
-        else:
-            print(f"Successfully inserted {len(ratings_to_insert)} rows")
-            return (f'Successfully processed {len(ratings_to_insert)} stocks', 200)
+            return jsonify({
+                "message": "Failed to store data in BigQuery.",
+                "error": str(e),
+                "status": "error"
+            })
     else:
-        return ('No ratings could be retrieved', 404)
+        return jsonify({
+            "message": "No ratings were retrieved.",
+            "status": "error"
+        })
 
-# For local testing
-if __name__ == "__main__":
-    # This block allows for local testing outside of Google Cloud Functions
-    import json
-    
-    # Simulate the function call
-    class MockRequest:
-        pass
-    
-    request = MockRequest()
-    result, status = fetch_and_store_stock_ratings(request)
-    print(f"Status: {status}")
-    print(f"Result: {result}")

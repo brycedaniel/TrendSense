@@ -65,14 +65,7 @@ class NewsDataProcessor:
             return 0.0, 0.0
         try:
             result = self.bert_pipeline(text)[0]
-            # Map BERT sentiment to a range similar to VADER (-1 to 1)
-            if result["label"] == "POSITIVE":
-                # Scale positive sentiment from 0-1 to 0-1
-                sentiment_score = (result["score"] * 2) - 1
-            else:
-                # Scale negative sentiment from 0-1 to -1-0
-                sentiment_score = -((result["score"] * 2) - 1)
-            
+            sentiment_score = 1.0 if result["label"] == "POSITIVE" else -1.0
             confidence = result["score"]
             return sentiment_score, confidence
         except Exception as e:
@@ -98,13 +91,10 @@ class NewsDataProcessor:
                 bigquery.SchemaField("source", "STRING"),
                 bigquery.SchemaField("lexical_diversity", "FLOAT"),
                 bigquery.SchemaField("reliability_score", "FLOAT"),
-                bigquery.SchemaField("textblob_sentiment", "FLOAT"),
-                bigquery.SchemaField("vader_sentiment", "FLOAT"),
-                bigquery.SchemaField("bert_sentiment", "FLOAT"),
-                bigquery.SchemaField("bert_confidence", "FLOAT"),
-                # New columns
-                bigquery.SchemaField("word_count", "INTEGER"),
-                bigquery.SchemaField("headline_sentiment", "FLOAT"),
+                bigquery.SchemaField("summary_sentiment", "FLOAT"),
+                bigquery.SchemaField("summary_vader_sentiment", "FLOAT"),
+                bigquery.SchemaField("summary_bert_sentiment", "FLOAT"),
+                bigquery.SchemaField("summary_bert_confidence", "FLOAT"),
             ]
             table = bigquery.Table(table_ref, schema=schema)
             try:
@@ -114,105 +104,24 @@ class NewsDataProcessor:
                 self.logger.error(f"Failed to create table {table_ref}: {e}")
                 raise NewsDataProcessorError(f"Table creation failed: {e}")
 
-    def filter_existing_data(self, new_data: pd.DataFrame, target_table: str) -> pd.DataFrame:
-        """
-        Filter out rows that already exist in the target table based on ticker and publish date.
 
-        Args:
-            new_data (pd.DataFrame): Incoming new data to be checked for duplicates.
-            target_table (str): Fully qualified BigQuery table reference.
-
-        Returns:
-            pd.DataFrame: Filtered dataframe with only new rows.
-        """
+    def filter_existing_data(self, new_data: pd.DataFrame, target_table: str, date_range_days: int = 30) -> pd.DataFrame:
         if new_data.empty:
-            self.logger.info("No new data provided for filtering.")
+            self.logger.info("No new data to filter.")
             return new_data
-
+        min_date = pd.Timestamp.now() - pd.Timedelta(days=date_range_days)
+        query = f"""
+        SELECT DISTINCT publish_date FROM `{target_table}` WHERE publish_date >= '{min_date.strftime('%Y-%m-%d')}'
+        """
         try:
-            # Ensure publish_date is in datetime format
-            new_data['publish_date'] = pd.to_datetime(new_data['publish_date'])
-
-            # Ensure target_table is fully qualified
-            if not target_table.count('.') >= 2:
-                target_table = f"{self.project_id}.{self.dataset_id}.{target_table}"
-
-            # Create a query to check for existing records with ticker and publish date
-            existing_records_query = f"""
-            WITH new_records AS (
-                {self._create_temp_table_query(new_data)}
-            )
-            SELECT 
-                nr.ticker, 
-                nr.publish_date
-            FROM new_records nr
-            JOIN `{target_table}` existing
-            ON nr.ticker = existing.ticker 
-            AND DATETIME(nr.publish_date) = DATETIME(existing.publish_date)
-            """
-
-            # Execute query to find existing records
-            query_job = self.client.query(existing_records_query)
-            existing_records = query_job.to_dataframe()
-
-            if not existing_records.empty:
-                # Create a combined key for filtering
-                new_data['duplicate_key'] = new_data.apply(
-                    lambda row: (row['ticker'], row['publish_date']), 
-                    axis=1
-                )
-                existing_records['duplicate_key'] = existing_records.apply(
-                    lambda row: (row['ticker'], row['publish_date']), 
-                    axis=1
-                )
-
-                # Filter out duplicate records
-                filtered_data = new_data[~new_data['duplicate_key'].isin(existing_records['duplicate_key'])]
-                
-                # Drop the temporary duplicate_key column
-                filtered_data = filtered_data.drop(columns=['duplicate_key'])
-                
-                self.logger.info(f"Total new rows after filtering: {len(filtered_data)} (from {len(new_data)} original rows)")
-            else:
-                filtered_data = new_data
-
+            existing_dates = set(row.publish_date for row in self.client.query(query).result())
+            self.logger.debug(f"Existing dates in the target table: {existing_dates}")
+            filtered_data = new_data[~new_data['publish_date'].isin(existing_dates)]
+            self.logger.info(f"Rows remaining after filtering: {len(filtered_data)}")
             return filtered_data
-
         except Exception as e:
             self.logger.error(f"Error filtering existing data: {e}")
-            # If filtering fails, return the original dataset to prevent data loss
             return new_data
-
-    def _create_temp_table_query(self, new_data: pd.DataFrame) -> str:
-        """
-        Create a temporary table query for the new data.
-
-        Args:
-            new_data (pd.DataFrame): Incoming new data to be checked for duplicates.
-
-        Returns:
-            str: SQL query string creating a temporary table with new records.
-        """
-        # Convert DataFrame to a list of tuples for the query
-        records = []
-        for _, row in new_data.iterrows():
-            # Explicitly convert to DATETIME 
-            publish_datetime = row['publish_date'].replace(tzinfo=None)
-            records.append(f"STRUCT('{row['ticker']}' AS ticker, DATETIME '{publish_datetime.strftime('%Y-%m-%d %H:%M:%S')}' AS publish_date)")
-        
-        # Join records into a single string
-        records_str = ',\n'.join(records)
-        
-        # Create the query
-        return f"""
-        SELECT 
-            ticker, 
-            publish_date
-        FROM UNNEST([
-            {records_str}
-        ])
-        """
-
     
     def process_and_move_data(self, source_table_id: str, target_table_id: str, batch_size: int = 1000) -> Dict[str, Any]:
         source_table = f"{self.project_id}.{self.dataset_id}.{source_table_id}"
@@ -245,10 +154,6 @@ class NewsDataProcessor:
                 self.logger.info("No new data to process.")
                 return {"status": "success", "message": "No new data", "rows_processed": 0}
 
-            # Rename summary_sentiment to textblob_sentiment
-            self.logger.info("Renaming columns...")
-            new_data.rename(columns={"summary_sentiment": "textblob_sentiment"}, inplace=True)
-
             # Ensure publish_date is in datetime format
             new_data['publish_date'] = pd.to_datetime(new_data['publish_date'])
 
@@ -261,17 +166,9 @@ class NewsDataProcessor:
                 self.logger.info("No new unique rows to process after filtering.")
                 return {"status": "success", "message": "No new unique rows", "rows_processed": 0}
 
-            # Word Count Calculation
-            self.logger.info("Calculating word count for summaries...")
-            new_data["word_count"] = new_data["summary"].fillna("").apply(lambda x: len(str(x).split()))
-
-            # Headline Sentiment using VADER
-            self.logger.info("Performing VADER sentiment analysis on headlines...")
-            new_data["headline_sentiment"] = new_data["title"].apply(self.calculate_vader_sentiment)
-
-            # Existing Sentiment Analyses
-            self.logger.info("Performing VADER sentiment analysis on summaries...")
-            new_data["vader_sentiment"] = new_data["summary"].apply(self.calculate_vader_sentiment)
+            # Sentiment Analysis
+            self.logger.info("Performing VADER sentiment analysis...")
+            new_data["summary_vader_sentiment"] = new_data["summary"].apply(self.calculate_vader_sentiment)
             bert_results = new_data["summary"].apply(self.calculate_bert_sentiment).tolist()
 
             # Validate BERT results
@@ -281,8 +178,8 @@ class NewsDataProcessor:
 
             # Unpack BERT results into separate columns
             bert_sentiments, bert_confidences = zip(*bert_results)
-            new_data["bert_sentiment"] = bert_sentiments
-            new_data["bert_confidence"] = bert_confidences
+            new_data["summary_bert_sentiment"] = bert_sentiments
+            new_data["summary_bert_confidence"] = bert_confidences
 
             # Load data into the target table
             self.logger.info("Loading data into BigQuery...")
@@ -300,6 +197,8 @@ class NewsDataProcessor:
             self.logger.error(error_msg)
             return {"status": "error", "message": error_msg, "rows_processed": 0}
 
+    
+
 
 def move_market_news_data(request):
     """
@@ -308,8 +207,8 @@ def move_market_news_data(request):
     # Load configuration from environment variables
     project_id = os.getenv('GCP_PROJECT_ID', 'trendsense')
     dataset_id = os.getenv('BQ_DATASET_ID', 'market_data')
-    source_table_id = os.getenv('SOURCE_TABLE_ID', 'Market_News_History_New')
-    target_table_id = os.getenv('TARGET_TABLE_ID', 'Market_News_History_2')
+    source_table_id = os.getenv('SOURCE_TABLE_ID', 'Market_News_AY_Temp')
+    target_table_id = os.getenv('TARGET_TABLE_ID', 'Market_News_AY')
 
     # Set up logging
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

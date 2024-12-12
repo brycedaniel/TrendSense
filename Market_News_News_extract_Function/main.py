@@ -33,10 +33,21 @@ def textblob_sentiment(text):
         return TextBlob(text).sentiment.polarity  # Sentiment polarity from -1 to 1
     return 0
 
+# Function to detect language
+def is_english(text):
+    if not text:
+        return False
+    try:
+        blob = TextBlob(text)
+        return blob.detect_language() == 'en'
+    except Exception:
+        return False
+
 # Function to fetch market news for a specific date
 def get_market_news(ticker, date):
     url = (
-        f'https://newsapi.org/v2/everything?q={ticker}&from={date}&to={date}&sortBy=publishedAt&apiKey={api_key}'
+        f'https://newsapi.org/v2/everything?q={ticker}&from={date}&to={date}&'
+        f'sortBy=publishedAt&language=en&apiKey={api_key}'
     )
     response = requests.get(url)
     if response.status_code == 200:
@@ -77,13 +88,18 @@ def save_to_bigquery(data, project_id, dataset_id, table_id):
         client.create_table(table)
         print(f"Table {table_ref} created.")
     
-    # Convert publish_date to datetime and then to MST
-    data['publish_date'] = pd.to_datetime(data['publish_date'], errors='coerce')
-    utc = pytz.utc
+    # Convert publish_date from UTC to MST
+    utc = pytz.UTC
     mst = pytz.timezone('US/Mountain')
-    data['publish_date'] = data['publish_date'].apply(
-        lambda x: x.astimezone(mst) if pd.notnull(x) else None
-    )
+    
+    # Convert string timestamps to datetime with UTC timezone
+    data['publish_date'] = pd.to_datetime(data['publish_date'], utc=True)
+    
+    # Convert to MST
+    data['publish_date'] = data['publish_date'].dt.tz_convert(mst)
+    
+    # Remove timezone information for BigQuery compatibility
+    data['publish_date'] = data['publish_date'].dt.tz_localize(None)
     
     # Ensure numeric values for sentiment
     data['summary_textblob_sentiment'] = pd.to_numeric(data['summary_textblob_sentiment'], errors='coerce')
@@ -109,21 +125,23 @@ def main(request):
             title = article.get('title', '')
             summary = article.get('description', '')
 
-            # Sentiment analysis using TextBlob
-            summary_textblob_sentiment = textblob_sentiment(summary)
+            # Additional language check for extra confidence
+            if is_english(title) and is_english(summary):
+                # Sentiment analysis using TextBlob
+                summary_textblob_sentiment = textblob_sentiment(summary)
 
-            # Article schema
-            news_entry = {
-                'ticker': ticker,
-                'title': title,
-                'summary': summary,
-                'summary_textblob_sentiment': summary_textblob_sentiment,
-                'publisher': article.get('source', {}).get('name', ''),
-                'link': article.get('url', ''),
-                'publish_date': article.get('publishedAt', ''),
-                'source': 'NewsAPI',  # Identify source
-            }
-            all_news.append(news_entry)
+                # Article schema
+                news_entry = {
+                    'ticker': ticker,
+                    'title': title,
+                    'summary': summary,
+                    'summary_textblob_sentiment': summary_textblob_sentiment,
+                    'publisher': article.get('source', {}).get('name', ''),
+                    'link': article.get('url', ''),
+                    'publish_date': article.get('publishedAt', ''),
+                    'source': 'NewsAPI',  # Identify source
+                }
+                all_news.append(news_entry)
 
         # Avoid rate limiting
         time.sleep(1)
@@ -142,7 +160,6 @@ def main(request):
     else:
         return {
             "status": "success",
-            "message": "No news articles found for yesterday.",
+            "message": "No English news articles found for yesterday.",
             "total_articles": 0,
         }
-

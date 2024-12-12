@@ -179,3 +179,4 @@ def transform_and_load_data(request):
     target_table = "trendsense.market_data.Market_News_History_New"
     processor.transform_and_load_data(source_table, target_table)
     return "Data transformation and load completed successfully."
+
