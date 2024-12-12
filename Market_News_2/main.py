@@ -236,6 +236,3 @@ def move_market_news_data(request):
                 'message': str(e)
             }
         }
-
-
-
