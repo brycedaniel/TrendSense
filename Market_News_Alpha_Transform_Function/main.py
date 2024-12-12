@@ -1,6 +1,10 @@
+# Alpha extract good
+
+
 import logging
 from typing import Tuple, Optional
-
+import pytz
+from datetime import datetime
 from google.cloud import bigquery
 from textblob import TextBlob
 import pandas as pd
@@ -176,10 +180,17 @@ class NewsDataProcessor:
             if new_data.empty:
                 self.logger.info("No new data to process.")
                 return "No new data to process.", 200
+                # Format 'publish_date' to 'yyyymmdd'
+          # Convert 'publish_date' to datetime, reformat date to 'yyyy-dd-mm' while retaining the time
+            new_data['publish_date'] = pd.to_datetime(new_data['publish_date'], errors='coerce')  # Ensure valid datetime format
+            new_data = new_data.dropna(subset=['publish_date'])  # Drop rows with invalid dates
 
-            # Remove rows with blank or null 'publish_date'
-            new_data = new_data.dropna(subset=['publish_date'])
-            new_data = new_data[new_data['publish_date'].str.strip() != '']
+            # Format the datetime: date as 'yyyy-dd-mm' and retain time
+            new_data['publish_date'] = new_data['publish_date'].apply(lambda x: f"{x.strftime('%Y-%m-%d')} {x.strftime('%H:%M:%S')}")
+
+
+
+       
 
             # Extract first ticker
             new_data['ticker'] = new_data['ticker'].apply(self.extract_first_ticker)
@@ -228,7 +239,7 @@ def update_alpha_news(request):
     project_id = "trendsense"
     dataset_id = "market_data"
     source_table_id = "News_Alpha_Extract"
-    target_table_id = "Market_News_History_New"
+    target_table_id = "Market_News_AY_Temp"
 
     # Create processor and process data
     processor = NewsDataProcessor(project_id, dataset_id)

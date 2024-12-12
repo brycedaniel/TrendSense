@@ -2,3 +2,4 @@ google-cloud-bigquery==3.11.4
 textblob
 pandas
 db-dtypes
+pytz
