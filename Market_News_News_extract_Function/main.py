@@ -2,19 +2,27 @@ import functions_framework
 import requests
 import pandas as pd
 import time
-from datetime import datetime, timedelta
+import os
+import logging
+from datetime import datetime
 from textblob import TextBlob
 from google.cloud import bigquery
-import pytz
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Replace with your NewsAPI key
+# Retrieve NewsAPI key from environment variable
 api_key = 'afc3fe9ac08745439bf521cb5b974fbc'
+if not api_key:
+    logger.error("NewsAPI key is missing. Please set NEWS_API_KEY environment variable.")
+    raise ValueError("NewsAPI key is required")
 
 # BigQuery configuration
-project_id = "trendsense"
-dataset_id = "market_data"
-table_id = "News_News_Extract"
+project_id = os.getenv('BIGQUERY_PROJECT_ID', 'trendsense')
+dataset_id = os.getenv('BIGQUERY_DATASET_ID', 'market_data')
+table_id = os.getenv('BIGQUERY_TABLE_ID', 'News_News_Extract')
 
 # List of tickers to search news for
 tickers = [
@@ -23,9 +31,8 @@ tickers = [
     'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS', 'META'
 ]
 
-# Get yesterday's date in ISO format
-yesterday = datetime.utcnow() - timedelta(days=1)
-yesterday_str = yesterday.strftime('%Y-%m-%d')
+# Get today's date in ISO format
+today = datetime.utcnow().strftime('%Y-%m-%d')
 
 # Function for TextBlob sentiment analysis
 def textblob_sentiment(text):
@@ -33,103 +40,100 @@ def textblob_sentiment(text):
         return TextBlob(text).sentiment.polarity  # Sentiment polarity from -1 to 1
     return 0
 
-# Function to detect language
-def is_english(text):
-    if not text:
-        return False
-    try:
-        blob = TextBlob(text)
-        return blob.detect_language() == 'en'
-    except Exception:
-        return False
-
-# Function to fetch market news for a specific date
-def get_market_news(ticker, date):
+# Function to fetch market news for the current day
+def get_market_news(ticker):
     url = (
-        f'https://newsapi.org/v2/everything?q={ticker}&from={date}&to={date}&'
-        f'sortBy=publishedAt&language=en&apiKey={api_key}'
+        f'https://newsapi.org/v2/everything?q={ticker}&from={today}&to={today}&sortBy=publishedAt&apiKey={api_key}'
     )
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json().get('articles', [])
-    elif response.status_code == 429:
-        print(f"Rate limit exceeded for {ticker}, retrying after delay...")
-        time.sleep(5)
-        return []
-    else:
-        print(f"Error fetching data for {ticker}: {response.status_code}")
-        return []
-
-# Function to save data to BigQuery
-def save_to_bigquery(data, project_id, dataset_id, table_id):
-    from google.cloud import bigquery
-    
-    client = bigquery.Client()
-    table_ref = f"{project_id}.{dataset_id}.{table_id}"
-    
-    # Define schema if table doesn't exist
-    schema = [
-        bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
-        bigquery.SchemaField("title", "STRING", mode="NULLABLE"),
-        bigquery.SchemaField("summary", "STRING", mode="NULLABLE"),
-        bigquery.SchemaField("summary_textblob_sentiment", "FLOAT", mode="NULLABLE"),
-        bigquery.SchemaField("publisher", "STRING", mode="NULLABLE"),
-        bigquery.SchemaField("link", "STRING", mode="NULLABLE"),
-        bigquery.SchemaField("publish_date", "TIMESTAMP", mode="NULLABLE"),
-        bigquery.SchemaField("source", "STRING", mode="NULLABLE"),
-    ]
-    
-    # Check if the table exists
     try:
-        client.get_table(table_ref)
-    except Exception:
-        print(f"Table {table_ref} does not exist. Creating it...")
-        table = bigquery.Table(table_ref, schema=schema)
-        client.create_table(table)
-        print(f"Table {table_ref} created.")
-    
-    # Convert publish_date from UTC to MST
-    utc = pytz.UTC
-    mst = pytz.timezone('US/Mountain')
-    
-    # Convert string timestamps to datetime with UTC timezone
-    data['publish_date'] = pd.to_datetime(data['publish_date'], utc=True)
-    
-    # Convert to MST
-    data['publish_date'] = data['publish_date'].dt.tz_convert(mst)
-    
-    # Remove timezone information for BigQuery compatibility
-    data['publish_date'] = data['publish_date'].dt.tz_localize(None)
-    
-    # Ensure numeric values for sentiment
-    data['summary_textblob_sentiment'] = pd.to_numeric(data['summary_textblob_sentiment'], errors='coerce')
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        return response.json().get('articles', [])
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error fetching data for {ticker}: {e}")
+        return []
 
-    # Log data types to verify
-    print("DataFrame dtypes before uploading:")
-    print(data.dtypes)
+# Create table if it doesn't exist
+def create_table_if_not_exists(client, project_id, dataset_id, table_id):
+    try:
+        table_ref = client.dataset(dataset_id).table(table_id)
+        
+        try:
+            client.get_table(table_ref)
+            logger.info(f"Table {table_id} already exists.")
+        except Exception:
+            schema = [
+                bigquery.SchemaField("ticker", "STRING"),
+                bigquery.SchemaField("title", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("summary", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("summary_textblob_sentiment", "FLOAT", mode="NULLABLE"),
+                bigquery.SchemaField("publisher", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("link", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("publish_date", "TIMESTAMP", mode="NULLABLE"),
+                bigquery.SchemaField("type", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("related_tickers", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("source", "STRING", mode="NULLABLE"),
+            ]
+            table = bigquery.Table(table_ref, schema=schema)
+            client.create_table(table)
+            logger.info(f"Table {table_id} created successfully.")
+    except Exception as e:
+        logger.error(f"Error creating or checking table: {e}")
+        raise
 
-    # Load data into BigQuery
-    job = client.load_table_from_dataframe(data, table_ref)
-    job.result()  # Wait for the load job to complete
-    print(f"Data successfully saved to BigQuery table: {table_ref}")
-    
+# Save data to BigQuery
+def save_to_bigquery(data, project_id, dataset_id, table_id):
+    try:
+        client = bigquery.Client()
+        table_ref = f"{project_id}.{dataset_id}.{table_id}"
+        
+        # Ensure DataFrame columns match BigQuery schema
+        data['publish_date'] = pd.to_datetime(data['publish_date'], errors='coerce')
+        
+        # Handle potential None/NaN values
+        data = data.where(pd.notnull(data), None)
+        
+        # Load data into BigQuery
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            # Explicitly define schema to handle type conversions
+            schema=[
+                bigquery.SchemaField("ticker", "STRING"),
+                bigquery.SchemaField("title", "STRING"),
+                bigquery.SchemaField("summary", "STRING"),
+                bigquery.SchemaField("summary_textblob_sentiment", "FLOAT"),
+                bigquery.SchemaField("publisher", "STRING"),
+                bigquery.SchemaField("link", "STRING"),
+                bigquery.SchemaField("publish_date", "TIMESTAMP"),
+                bigquery.SchemaField("type", "STRING"),
+                bigquery.SchemaField("related_tickers", "STRING"),
+                bigquery.SchemaField("source", "STRING"),
+            ]
+        )
+        
+        job = client.load_table_from_dataframe(data, table_ref, job_config=job_config)
+        job.result()  # Wait for the load job to complete
+        logger.info(f"Data successfully saved to BigQuery table: {table_ref}")
+    except Exception as e:
+        logger.error(f"Error saving to BigQuery: {e}")
+        raise
+
 # Cloud Function Entry Point
 @functions_framework.http
 def main(request):
-    all_news = []
-    for ticker in tickers:
-        print(f"Fetching news for {ticker} from {yesterday_str}...")
-        articles = get_market_news(ticker, yesterday_str)
-
-        for article in articles:
-            title = article.get('title', '')
-            summary = article.get('description', '')
-
-            # Additional language check for extra confidence
-            if is_english(title) and is_english(summary):
+    try:
+        all_news = []
+        for ticker in tickers:
+            logger.info(f"Fetching news for {ticker}...")
+            articles = get_market_news(ticker)
+            
+            for article in articles:
+                title = article.get('title', '')
+                summary = article.get('description', '')
+                
                 # Sentiment analysis using TextBlob
                 summary_textblob_sentiment = textblob_sentiment(summary)
-
+                
                 # Article schema
                 news_entry = {
                     'ticker': ticker,
@@ -139,27 +143,41 @@ def main(request):
                     'publisher': article.get('source', {}).get('name', ''),
                     'link': article.get('url', ''),
                     'publish_date': article.get('publishedAt', ''),
+                    'type': 'general',  # Default value
+                    'related_tickers': '',  # Default empty
                     'source': 'NewsAPI',  # Identify source
                 }
                 all_news.append(news_entry)
+            
+            # Avoid rate limiting
+            time.sleep(1)
 
-        # Avoid rate limiting
-        time.sleep(1)
+        # Convert data to a DataFrame
+        df = pd.DataFrame(all_news)
 
-    # Convert data to a DataFrame
-    df = pd.DataFrame(all_news)
-
-    if not df.empty:
-        # Save to BigQuery
-        save_to_bigquery(df, project_id, dataset_id, table_id)
+        if not df.empty:
+            # Ensure the table exists before saving data
+            client = bigquery.Client()
+            create_table_if_not_exists(client, project_id, dataset_id, table_id)
+            
+            # Save to BigQuery
+            save_to_bigquery(df, project_id, dataset_id, table_id)
+            return {
+                "status": "success",
+                "message": f"Data saved to BigQuery table: {project_id}.{dataset_id}.{table_id}",
+                "total_articles": len(all_news)
+            }
+        else:
+            logger.warning("No news articles found for today.")
+            return {
+                "status": "success",
+                "message": "No news articles found for today.",
+                "total_articles": 0
+            }
+    except Exception as e:
+        logger.error(f"Unexpected error in main function: {e}", exc_info=True)
         return {
-            "status": "success",
-            "message": f"Data saved to BigQuery table: {project_id}.{dataset_id}.{table_id}",
-            "total_articles": len(all_news),
-        }
-    else:
-        return {
-            "status": "success",
-            "message": "No English news articles found for yesterday.",
-            "total_articles": 0,
+            "status": "error",
+            "message": f"An error occurred: {str(e)}",
+            "total_articles": 0
         }

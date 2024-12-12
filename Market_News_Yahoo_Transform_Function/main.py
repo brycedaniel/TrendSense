@@ -242,7 +242,7 @@ def copy_market_news_with_processing(request):
     project_id = "trendsense"
     dataset_id = "market_data"
     source_table_id = "News_Yahoo_Extract"
-    target_table_id = "Market_News_History_New"
+    target_table_id = "Market_News_AY_Temp"
 
     # Create processor and process data
     processor = YahooNewsProcessor(project_id, dataset_id)

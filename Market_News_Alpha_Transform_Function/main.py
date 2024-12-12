@@ -239,7 +239,7 @@ def update_alpha_news(request):
     project_id = "trendsense"
     dataset_id = "market_data"
     source_table_id = "News_Alpha_Extract"
-    target_table_id = "Market_News_History_New"
+    target_table_id = "Market_News_AY_Temp"
 
     # Create processor and process data
     processor = NewsDataProcessor(project_id, dataset_id)
