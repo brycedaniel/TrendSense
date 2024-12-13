@@ -308,8 +308,8 @@ def move_market_news_data(request):
     # Load configuration from environment variables
     project_id = os.getenv('GCP_PROJECT_ID', 'trendsense')
     dataset_id = os.getenv('BQ_DATASET_ID', 'market_data')
-    source_table_id = os.getenv('SOURCE_TABLE_ID', 'Market_News_AY_Temp')
-    target_table_id = os.getenv('TARGET_TABLE_ID', 'Market_News_AY')
+    source_table_id = os.getenv('SOURCE_TABLE_ID', 'Market_News_NAPI_Temp')
+    target_table_id = os.getenv('TARGET_TABLE_ID', 'Market_News_NAPI')
 
     # Set up logging
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

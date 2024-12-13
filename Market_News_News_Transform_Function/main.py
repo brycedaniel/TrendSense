@@ -176,7 +176,7 @@ class NewsDataProcessor:
 def transform_and_load_data(request):
     processor = NewsDataProcessor()
     source_table = "trendsense.market_data.News_News_Extract"
-    target_table = "trendsense.market_data.Market_News_History_New"
+    target_table = "trendsense.market_data.Market_News_NAPI_Temp"
     processor.transform_and_load_data(source_table, target_table)
     return "Data transformation and load completed successfully."
 

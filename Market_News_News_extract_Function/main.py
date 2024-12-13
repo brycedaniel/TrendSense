@@ -7,6 +7,8 @@ import logging
 from datetime import datetime
 from textblob import TextBlob
 from google.cloud import bigquery
+from datetime import datetime, timedelta
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -27,12 +29,14 @@ table_id = os.getenv('BIGQUERY_TABLE_ID', 'News_News_Extract')
 # List of tickers to search news for
 tickers = [
     'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
-    'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
-    'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS', 'META'
+            'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+            'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META'
 ]
 
 # Get today's date in ISO format
-today = datetime.utcnow().strftime('%Y-%m-%d')
+today = datetime.now().strftime('%Y-%m-%d')
+two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+
 
 # Function for TextBlob sentiment analysis
 def textblob_sentiment(text):
@@ -43,7 +47,7 @@ def textblob_sentiment(text):
 # Function to fetch market news for the current day
 def get_market_news(ticker):
     url = (
-        f'https://newsapi.org/v2/everything?q={ticker}&from={today}&to={today}&sortBy=publishedAt&apiKey={api_key}'
+        f'https://newsapi.org/v2/everything?q={ticker}&from={two_days_ago}&to={today}&sortBy=publishedAt&language=en&apiKey={api_key}'
     )
     try:
         response = requests.get(url, timeout=10)
@@ -95,7 +99,7 @@ def save_to_bigquery(data, project_id, dataset_id, table_id):
         
         # Load data into BigQuery
         job_config = bigquery.LoadJobConfig(
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             # Explicitly define schema to handle type conversions
             schema=[
                 bigquery.SchemaField("ticker", "STRING"),
