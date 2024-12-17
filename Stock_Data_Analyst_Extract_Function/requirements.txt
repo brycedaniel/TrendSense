@@ -1,0 +1,7 @@
+functions-framework
+pyarrow
+yfinance
+pandas
+google-cloud-bigquery
+requests
+numpy
