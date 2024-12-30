@@ -30,7 +30,8 @@ table_id = os.getenv('BIGQUERY_TABLE_ID', 'News_News_Extract')
 tickers = [
     'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
             'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
-            'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META', 'RGTI','QUBT'
+            'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META', 'RGTI','QUBT',
+            'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
 ]
 
 # Get today's date in ISO format

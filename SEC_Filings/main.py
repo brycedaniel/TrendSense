@@ -8,7 +8,8 @@ from flask import Request
 tickers = [
     'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
     'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
-    'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META'
+    'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META','RGTI','QUBT',
+    'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
 ]
 
 # Function to load the company tickers JSON file and create a ticker to CIK mapping

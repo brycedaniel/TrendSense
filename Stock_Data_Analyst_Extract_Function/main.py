@@ -15,7 +15,9 @@ DATASET_ID = "stock_data"
 TABLE_ID = "stock_analyst"
 STOCK_SYMBOLS = ['AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
             'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
-            'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS', 'META','RGTI','QUBT']
+            'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS', 'META','RGTI','QUBT',
+            'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
+            ]
 
 def fetch_latest_yahoo_recommendations(ticker: str) -> tuple:
     """Fetch the latest analyst recommendations from Yahoo Finance."""
