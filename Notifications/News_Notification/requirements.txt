@@ -1,0 +1,5 @@
+pyarrow
+requests
+google-cloud-bigquery
+flask
+twilio
