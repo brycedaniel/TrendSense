@@ -1,16 +1,14 @@
 from google.cloud import bigquery
-import os
-import json
-from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import os
+from datetime import datetime
 
 def news_notification(request):
     """
-    Google Cloud Function to check specific BigQuery tables for data related to multiple tickers
-    and store the results in a new table 'trendsense.notification.Notifications',
-    ensuring no duplicate entries based on the 'Info' column and sending an email notification
-    when new rows are added.
+    Google Cloud Function to check specific BigQuery tables for data related to multiple tickers,
+    store the results in a new table, and send email notifications for new rows.
     """
     # Set up BigQuery client
     client = bigquery.Client()
@@ -23,26 +21,22 @@ def news_notification(request):
         ("trendsense.market_data.News_Yahoo_Extract", "ticker", "link", "publish_date", "publisher")
     ]
 
-    target_tickers = ["ASTS", "TSLA", "AAPL", "GSAT"]  # Add the list of tickers to monitor
-
-    # Define the target table for notifications
+    target_tickers = ["ASTS", "GSAT"]  # Add the list of tickers to monitor
     target_table = "trendsense.notification.Notifications"
 
-    # SQL template for querying each table
+    # Email configuration
+    SMTP_SERVER = "smtp.zoho.com"
+    SMTP_PORT = 587
+    EMAIL_ADDRESS = "trendsense@zohomail.com"
+    EMAIL_PASSWORD = "pZNUVbUid0tv"
+    USER_EMAIL_ADDRESS = "trendsense@zohomail.com"
+
     sql_template = """
         SELECT {column} AS Ticker, {info_column} AS Info, {date_column} AS Date{source_select}
         FROM `{table}`
         {where_clause}
     """
 
-    # Email configuration
-    SMTP_SERVER = "smtp.office365.com"
-    SMTP_PORT = 587
-    EMAIL_ADDRESS = os.getenv("snipes202@hotmail.com")  # Your email address
-    EMAIL_PASSWORD = os.getenv("Linctel4625")  # Your email password
-    USER_EMAIL_ADDRESS = "bryceadaniel@hotmail.com"
-
-    # List to store formatted data for the target table
     formatted_data = []
 
     try:
@@ -55,18 +49,14 @@ def news_notification(request):
 
         for ticker in target_tickers:
             for table, column, info_column, date_column, source_column in source_tables:
-                # Adjust source selection for SEC table
                 source_select = f", {source_column} AS Source" if source_column else ", 'SEC' AS Source"
-                where_clause = f"WHERE {column} = @target_ticker" if source_column else ""
+                where_clause = f"WHERE {column} = @target_ticker"
 
-                # Prepare the query with a parameterized query (only for filtered tables)
-                job_config = None
-                if source_column:
-                    job_config = bigquery.QueryJobConfig(
-                        query_parameters=[
-                            bigquery.ScalarQueryParameter("target_ticker", "STRING", ticker)
-                        ]
-                    )
+                job_config = bigquery.QueryJobConfig(
+                    query_parameters=[
+                        bigquery.ScalarQueryParameter("target_ticker", "STRING", ticker)
+                    ]
+                )
 
                 query = sql_template.format(
                     table=table,
@@ -77,13 +67,11 @@ def news_notification(request):
                     where_clause=where_clause
                 )
 
-                # Execute the query
                 query_job = client.query(query, job_config=job_config)
-
-                # Collect and format results
                 results = query_job.result()
+
                 for row in results:
-                    if row.Info not in existing_infos:  # Avoid duplicates
+                    if row.Info not in existing_infos:
                         formatted_data.append({
                             "Ticker": row.Ticker,
                             "Notification": "News Notification",
@@ -93,37 +81,50 @@ def news_notification(request):
                             "Source": row.Source
                         })
 
-        # Check if there's data to insert
         if formatted_data:
             # Insert the data into the target table
             table_ref = client.dataset("notification").table("Notifications")
-
-            # Define the schema if required (BigQuery infers if not specified)
             errors = client.insert_rows_json(table_ref, formatted_data)
 
             if errors:
                 return f"Errors occurred while inserting data: {errors}", 500
 
-            # Send an email notification if new rows were added
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                server.starttls()
-                server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                message_body = f"New notifications added: {len(formatted_data)} entries."
-                msg = MIMEText(message_body)
-                msg['Subject'] = "New Notifications Added"
-                msg['From'] = EMAIL_ADDRESS
-                msg['To'] = USER_EMAIL_ADDRESS
-                server.sendmail(EMAIL_ADDRESS, USER_EMAIL_ADDRESS, msg.as_string())
+            # Send email notifications for new rows
+            for data in formatted_data:
+                send_email(SMTP_SERVER, SMTP_PORT, EMAIL_ADDRESS, EMAIL_PASSWORD, USER_EMAIL_ADDRESS, data)
 
-        return "Notification data successfully inserted.", 200
+        return "Notification data successfully inserted and emails sent.", 200
 
     except Exception as e:
-        # Log and return any errors
         return f"Error occurred: {str(e)}", 500
 
-# For local testing
-if __name__ == "__main__":
-    from flask import Request
-    request = Request(environ={})
-    response = news_notification(request)
-    print(response)
+
+def send_email(smtp_server, smtp_port, email_address, email_password, recipient, data):
+    """
+    Send an email notification with row data.
+    """
+    try:
+        subject = f"New Notification for {data['Ticker']}"
+        body = f"""
+        New Notification:
+        Ticker: {data['Ticker']}
+        Notification: {data['Notification']}
+        Type: {data['Type']}
+        Info: {data['Info']}
+        Date: {data['Date']}
+        Source: {data['Source']}
+        """
+        msg = MIMEMultipart()
+        msg["From"] = email_address
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(email_address, email_password)
+            server.sendmail(email_address, recipient, msg.as_string())
+
+    except Exception as e:
+        print(f"Failed to send email: {str(e)}")
+
