@@ -5,9 +5,16 @@ import os
 import json
 import requests
 from google.cloud import bigquery
+from typing import List
+import random
 
-# Replace with your actual API Key
-YAHOO_API_KEY = "ee72be2ef9msh532c4fc1a7b7941p1176e1jsn0328598b0245"
+# API Keys Configuration
+API_KEYS = [
+    "1949b7a600msh1fcf25399699fcap11bf4fjsnd87cb8a26731",
+    "ee72be2ef9msh532c4fc1a7b7941p1176e1jsn0328598b0245",  
+    "bd8ce2e47emshd9b790e712f6f41p195cd7jsnc2d18a4e9d95"
+ 
+]
 
 # Constants for Google BigQuery
 PROJECT_ID = "trendsense"
@@ -19,18 +26,52 @@ STOCK_SYMBOLS = ['AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR',
             'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
             ]
 
-def fetch_latest_yahoo_recommendations(ticker: str) -> tuple:
-    """Fetch the latest analyst recommendations from Yahoo Finance."""
+class APIKeyManager:
+    def __init__(self, api_keys: List[str]):
+        self.api_keys = api_keys
+        self.current_index = 0
+        self.failed_keys = set()
+
+    def get_next_key(self) -> str:
+        """Get the next available API key."""
+        attempts = 0
+        while attempts < len(self.api_keys):
+            if len(self.failed_keys) == len(self.api_keys):
+                raise Exception("All API keys have failed")
+            
+            key = self.api_keys[self.current_index]
+            self.current_index = (self.current_index + 1) % len(self.api_keys)
+            
+            if key not in self.failed_keys:
+                return key
+            
+            attempts += 1
+        
+        raise Exception("No valid API keys available")
+
+    def mark_key_failed(self, key: str):
+        """Mark an API key as failed."""
+        self.failed_keys.add(key)
+
+def fetch_latest_yahoo_recommendations(ticker: str, key_manager: APIKeyManager) -> tuple:
+    """Fetch the latest analyst recommendations from Yahoo Finance using rotating API keys."""
     strong_buy, buy, hold, sell, strong_sell = 0, 0, 0, 0, 0
+    
     try:
+        api_key = key_manager.get_next_key()
         url = "https://yahoo-finance166.p.rapidapi.com/api/stock/get-recommendation-trend"
         headers = {
-            'x-rapidapi-key': YAHOO_API_KEY,
+            'x-rapidapi-key': api_key,
             'x-rapidapi-host': 'yahoo-finance166.p.rapidapi.com'
         }
         params = {'symbol': ticker, 'region': 'US'}
         response = requests.get(url, headers=headers, params=params)
 
+        if response.status_code == 429:  # Rate limit exceeded
+            print(f"Rate limit exceeded for key: {api_key}")
+            key_manager.mark_key_failed(api_key)
+            return fetch_latest_yahoo_recommendations(ticker, key_manager)  # Retry with next key
+            
         if response.status_code != 200:
             print(f"API error for {ticker}: {response.status_code} {response.reason}")
             return strong_buy, buy, hold, sell, strong_sell
@@ -52,17 +93,20 @@ def fetch_latest_yahoo_recommendations(ticker: str) -> tuple:
             strong_sell = latest_trend.get('strongSell', 0)
     except Exception as e:
         print(f"Error fetching recommendations for {ticker}: {e}")
+    
     return strong_buy, buy, hold, sell, strong_sell
 
-def get_stock_targets(symbols):
+def get_stock_targets(symbols: List[str]) -> pd.DataFrame:
     """Fetch stock targets and recommendations for a list of symbols."""
+    key_manager = APIKeyManager(API_KEYS)
     all_stock_data = []
+    
     for symbol in symbols:
         try:
             stock = yf.Ticker(symbol)
             info = stock.info
 
-            strong_buy, buy, hold, sell, strong_sell = fetch_latest_yahoo_recommendations(symbol)
+            strong_buy, buy, hold, sell, strong_sell = fetch_latest_yahoo_recommendations(symbol, key_manager)
 
             stock_data = {
                 'symbol': symbol,
@@ -81,19 +125,17 @@ def get_stock_targets(symbols):
             all_stock_data.append(stock_data)
         except Exception as e:
             print(f"Error fetching data for {symbol}: {e}")
+    
     return pd.DataFrame(all_stock_data)
 
-def upload_to_bigquery(df):
+def upload_to_bigquery(df: pd.DataFrame):
     """Upload the DataFrame to Google BigQuery."""
     client = bigquery.Client()
     table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
 
-    # Ensure fetch_date is converted to datetime.date
     if "fetch_date" in df.columns:
         df["fetch_date"] = pd.to_datetime(df["fetch_date"]).dt.date
         
-        
-    # Define schema
     schema = [
         bigquery.SchemaField("symbol", "STRING"),
         bigquery.SchemaField("fetch_date", "DATE"),
@@ -110,7 +152,6 @@ def upload_to_bigquery(df):
     ]
 
     try:
-        # Check if the table exists; create if not
         try:
             client.get_table(table_ref)
         except:
@@ -118,7 +159,6 @@ def upload_to_bigquery(df):
             client.create_table(table)
             print(f"Created table {table_ref}")
 
-        # Upload DataFrame
         job = client.load_table_from_dataframe(df, table_ref)
         job.result()
         print("Data uploaded to BigQuery successfully.")
@@ -129,7 +169,11 @@ def main(event=None, context=None):
     """Cloud Function entry point."""
     try:
         print("Fetching stock data...")
-        stock_data = get_stock_targets(STOCK_SYMBOLS)
+        # Shuffle the stock symbols to distribute load across different API keys
+        shuffled_symbols = STOCK_SYMBOLS.copy()
+        random.shuffle(shuffled_symbols)
+        
+        stock_data = get_stock_targets(shuffled_symbols)
 
         if not stock_data.empty:
             print("Uploading data to BigQuery...")
