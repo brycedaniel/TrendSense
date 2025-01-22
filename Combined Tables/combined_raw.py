@@ -41,7 +41,9 @@ WITH Combined_Table AS (
         COALESCE(a.bert_sentiment, b.bert_sentiment) AS bert_sentiment,
         COALESCE(a.bert_confidence, b.bert_confidence) AS bert_confidence,
         COALESCE(a.reliability_score, b.reliability_score) AS reliability_score,
-        COALESCE(a.word_count, b.word_count) AS word_count
+        COALESCE(a.word_count, b.word_count) AS word_count,
+        COALESCE(a.related_tickers, b.related_tickers) AS related_tickers,
+        COALESCE(a.summary, b.summary) AS summary
     FROM
         `trendsense.market_data.Market_News_AY` AS a
     FULL OUTER JOIN
