@@ -70,7 +70,9 @@ def get_market_news(tickers):
                     publish_timestamp = item.get('providerPublishTime', 0)
                     publish_date = datetime.fromtimestamp(publish_timestamp).date()
 
-                    if publish_date >= one_day_ago and item.get('type', '').lower() == 'story':
+                    if True:  # Temporarily bypass filtering
+
+                    #if publish_date >= one_day_ago and item.get('type', '').lower() == 'story':
                         link = item.get('link', '')
                         summary = fetch_article_summary(link) if link else "No summary available."
                         sentiment_score = calculate_sentiment(summary)
