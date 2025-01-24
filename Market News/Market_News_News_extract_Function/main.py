@@ -9,47 +9,52 @@ from textblob import TextBlob
 from google.cloud import bigquery
 from datetime import datetime, timedelta
 
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+# Logging is set up to record messages and provide details about the process flow and any errors encountered.
 
 # Retrieve NewsAPI key from environment variable
 api_key = 'afc3fe9ac08745439bf521cb5b974fbc'
 if not api_key:
     logger.error("NewsAPI key is missing. Please set NEWS_API_KEY environment variable.")
     raise ValueError("NewsAPI key is required")
+# The API key for NewsAPI is retrieved to enable authenticated requests. If missing, the script logs an error and raises an exception.
 
 # BigQuery configuration
 project_id = os.getenv('BIGQUERY_PROJECT_ID', 'trendsense')
 dataset_id = os.getenv('BIGQUERY_DATASET_ID', 'market_data')
 table_id = os.getenv('BIGQUERY_TABLE_ID', 'News_News_Extract')
+# These configurations define the BigQuery project, dataset, and table for storing the extracted news data.
 
 # List of tickers to search news for
 tickers = [
     'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
-            'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
-            'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META', 'RGTI','QUBT',
-            'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
+    'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+    'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META', 'RGTI', 'QUBT',
+    'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
 ]
+# This list contains stock tickers that the script will search for relevant news articles.
 
 # Get today's date in ISO format
 today = datetime.now().strftime('%Y-%m-%d')
 two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
-
+# Calculates date ranges (today and two days ago) to limit the news search to a recent timeframe.
 
 # Function for TextBlob sentiment analysis
 def textblob_sentiment(text):
     if text:
         return TextBlob(text).sentiment.polarity  # Sentiment polarity from -1 to 1
     return 0
+# Analyzes the sentiment of a given text using TextBlob. Polarity is a measure of positivity/negativity.
 
 # Function to fetch market news for the current day
 def get_market_news(ticker):
     url = (
-        f'https://newsapi.org/v2/everything?q={ticker}&from={two_days_ago}&to={today}&sortBy=publishedAt&language=en&apiKey={api_key}'
+    f'https://newsapi.org/v2/everything?qInTitle={ticker}&from={two_days_ago}&to={today}&sortBy=publishedAt&language=en&apiKey={api_key}'
     )
+
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()  # Raise an exception for bad status codes
@@ -57,6 +62,7 @@ def get_market_news(ticker):
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching data for {ticker}: {e}")
         return []
+# Sends a GET request to NewsAPI to retrieve recent articles for a specified stock ticker. Handles errors gracefully by logging them.
 
 # Create table if it doesn't exist
 def create_table_if_not_exists(client, project_id, dataset_id, table_id):
@@ -85,6 +91,7 @@ def create_table_if_not_exists(client, project_id, dataset_id, table_id):
     except Exception as e:
         logger.error(f"Error creating or checking table: {e}")
         raise
+# Checks if the specified BigQuery table exists. If not, it creates a table with the defined schema.
 
 # Save data to BigQuery
 def save_to_bigquery(data, project_id, dataset_id, table_id):
@@ -122,6 +129,7 @@ def save_to_bigquery(data, project_id, dataset_id, table_id):
     except Exception as e:
         logger.error(f"Error saving to BigQuery: {e}")
         raise
+# Saves the data from a DataFrame to BigQuery. Ensures data is formatted properly and matches the table schema.
 
 # Cloud Function Entry Point
 @functions_framework.http
@@ -156,6 +164,7 @@ def main(request):
             
             # Avoid rate limiting
             time.sleep(1)
+# Iterates over tickers, fetches news for each, performs sentiment analysis, and stores results in a list.
 
         # Convert data to a DataFrame
         df = pd.DataFrame(all_news)
@@ -186,3 +195,4 @@ def main(request):
             "message": f"An error occurred: {str(e)}",
             "total_articles": 0
         }
+# Defines the main function as the entry point for the Cloud Function. Fetches data, analyzes sentiment, and saves results to BigQuery.

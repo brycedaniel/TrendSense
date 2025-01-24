@@ -54,11 +54,11 @@ filtered_df = df[columns_to_include]
 
 # Drop rows with any empty cells (NaN)
 # This ensures the final dataset is complete and avoids errors in subsequent analysis
-filtered_df = filtered_df.dropna()
+#filtered_df = filtered_df.dropna()
 
 # Save the cleaned DataFrame to a new CSV file
 # This step outputs the processed data for further use, ensuring the work is reproducible and accessible
-output_file_path = "Per_Article_Table.csv"
+output_file_path = "Per_Article_TableNA.csv"
 filtered_df.to_csv(output_file_path, index=False)  # Save without the index column
 
 # Inform the user that the new file has been saved successfully

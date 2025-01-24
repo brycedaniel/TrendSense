@@ -52,14 +52,28 @@ def get_market_news(api_key):
         logger.error(f"Unexpected error occurred: {str(e)}")
         return []
 
+# Define the specific tickers to include
+TICKERS_TO_INCLUDE = [
+    'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
+    'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+    'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META',
+    'RGTI', 'QUBT', 'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
+]
+
 def process_news_items(news_items):
     """
-    Process news items into a structured DataFrame, including sentiment.
+    Process news items into a structured DataFrame, including sentiment,
+    filtering for specific tickers.
     """
     try:
         mst = pytz.timezone("MST")  # Define MST timezone
         processed_items = []
         for item in news_items:
+            # Filter based on the tickers in the item's ticker_sentiment
+            tickers = [ts['ticker'] for ts in item.get('ticker_sentiment', [])]
+            if not set(tickers).intersection(TICKERS_TO_INCLUDE):
+                continue  # Skip this item if no tickers match
+            
             # Convert publish_date format and timezone
             raw_date = item.get('time_published', '')
             try:
@@ -69,13 +83,13 @@ def process_news_items(news_items):
                 mst_date = "Invalid Date"
 
             processed_item = {
-                'ticker': ', '.join([ts['ticker'] for ts in item.get('ticker_sentiment', [])]),
+                'ticker': ', '.join(tickers),
                 'title': item.get('title', ''),
                 'summary': item.get('summary', ''),
                 'publisher': item.get('source', ''),
                 'link': item.get('url', ''),
                 'publish_date': mst_date,
-                'related_tickers': ', '.join([ts['ticker'] for ts in item.get('ticker_sentiment', [])]),
+                'related_tickers': ', '.join(tickers),
                 'source': 'Alpha',
                 'overall_sentiment_score': item.get('overall_sentiment_score', ''),
                 'overall_sentiment_label': item.get('overall_sentiment_label', '')
@@ -89,6 +103,7 @@ def process_news_items(news_items):
     except Exception as e:
         logger.error(f"Error processing news items: {str(e)}")
         return pd.DataFrame()
+
 
 def save_to_bigquery(df, project_id, dataset_id, table_id):
     """

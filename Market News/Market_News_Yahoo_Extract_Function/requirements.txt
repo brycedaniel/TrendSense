@@ -1,9 +1,6 @@
 pyarrow
-pandas
 yfinance
-textblob
-newspaper3k
+pandas
 google-cloud-bigquery
+textblob
 flask
-lxml[html_clean]
-nltk>=3.7

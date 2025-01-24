@@ -61,10 +61,10 @@ daily_ticker_aggregated_df['article_sentiment_class'] = daily_ticker_aggregated_
 daily_ticker_aggregated_df['average_market_sentiment_class'] = daily_ticker_aggregated_df['average_market_sentiment'].apply(classify_sentiment)
 
 # Remove any rows with blank/NaN cells to ensure data integrity
-daily_ticker_aggregated_df.dropna(inplace=True)
+#daily_ticker_aggregated_df.dropna(inplace=True)
 
 # Save the processed and aggregated DataFrame to a new CSV file
-output_file_path = "Daily_Ticker_Table.csv"
+output_file_path = "Daily_Ticker_TableNA.csv"
 daily_ticker_aggregated_df.to_csv(output_file_path, index=False)
 
 # Inform the user about successful file creation

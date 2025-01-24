@@ -3,8 +3,9 @@ import pandas as pd
 import logging
 from typing import Optional
 
-
+# Class to process news data with transformations and sentiment analysis
 class NewsDataProcessor:
+    # Define the schema for the target BigQuery table
     SCHEMA = [
         bigquery.SchemaField("ticker", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("title", "STRING", mode="NULLABLE"),
@@ -22,10 +23,12 @@ class NewsDataProcessor:
         bigquery.SchemaField("reliability_score", "FLOAT", mode="NULLABLE"),
         bigquery.SchemaField("lexical_diversity", "FLOAT", mode="NULLABLE"),
     ]
+    # Schema defines the structure of the target BigQuery table, ensuring consistency.
 
     def __init__(self):
         self.client = bigquery.Client()
         self.logger = logging.getLogger(__name__)
+    # Initialize the BigQuery client and logger for database operations and tracking.
 
     @staticmethod
     def calculate_sentiment(text: Optional[str]) -> float:
@@ -34,11 +37,13 @@ class NewsDataProcessor:
         if not text or not isinstance(text, str):
             return 0.0
         return TextBlob(text).sentiment.polarity
+    # Calculate sentiment polarity using TextBlob to gauge the positivity/negativity of text content.
 
     @staticmethod
     def assess_language_reliability(summary: Optional[str]) -> float:
         polarity = NewsDataProcessor.calculate_sentiment(summary)
         return max(0, 1 - abs(polarity))
+    # Assess language reliability by calculating sentiment neutrality (closer to 0 is more neutral/reliable).
 
     @staticmethod
     def calculate_lexical_diversity(text: Optional[str]) -> float:
@@ -52,6 +57,7 @@ class NewsDataProcessor:
         except Exception as e:
             logging.error(f"Lexical diversity calculation failed: {e}")
             return 0.0
+    # Calculate lexical diversity to measure the richness of the vocabulary in a text.
 
     def create_table_if_not_exists(self, table_id: str) -> None:
         try:
@@ -62,6 +68,8 @@ class NewsDataProcessor:
             table = bigquery.Table(table_id, schema=self.SCHEMA)
             self.client.create_table(table)
             self.logger.info(f"Table {table_id} created successfully with defined schema.")
+    # Check if the target table exists in BigQuery. If not, create it using the defined schema.
+
     def filter_existing_data(self, new_data: pd.DataFrame, target_table: str) -> pd.DataFrame:
         """
         Filter out rows that already exist in the target table based on publish_date.
@@ -118,7 +126,7 @@ class NewsDataProcessor:
         self.logger.info(f"Total new rows: {len(filtered_data)} (out of {len(new_data)} original rows)")
 
         return filtered_data
-
+    # Filters out data that already exists in the target table by comparing `publish_date`.
 
     def transform_and_load_data(self, source_table: str, target_table: str):
         """
@@ -169,8 +177,7 @@ class NewsDataProcessor:
             self.logger.info(f"Data successfully loaded into {target_table}")
         else:
             self.logger.info("No new rows to load.")
-
-
+    # Transforms source data, performs calculations, filters duplicates, and loads the result into the target table.
 
 # Entry-point function for Google Cloud Functions
 def transform_and_load_data(request):
@@ -179,4 +186,5 @@ def transform_and_load_data(request):
     target_table = "trendsense.market_data.Market_News_NAPI_Temp"
     processor.transform_and_load_data(source_table, target_table)
     return "Data transformation and load completed successfully."
+# The entry point triggers the transformation and loading process, making it compatible with Google Cloud Functions.
 
