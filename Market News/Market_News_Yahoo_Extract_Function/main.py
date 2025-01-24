@@ -10,7 +10,6 @@ import os
 
 # Append the nltk_data path
 nltk.data.path.append(os.path.join(os.getcwd(), "nltk_data"))
-# Log the search paths for nltk resources
 print("[DEBUG] NLTK data paths:")
 for path in nltk.data.path:
     print(f" - {path}")
@@ -22,17 +21,9 @@ try:
 except LookupError:
     print("[DEBUG] 'punkt' resource not found. Downloading...")
     nltk.download("punkt")
-try:
-    nltk.data.find("tokenizers/punkt_tab")
-    print("[DEBUG] 'punkt_tab' resource found.")
-except LookupError:
-    print("[DEBUG] 'punkt_tab' resource not found. Downloading...")
-    nltk.download("punkt_tab")
-
-
-
 
 def fetch_article_summary(link):
+    print(f"[DEBUG] Attempting to fetch summary for: {link}")
     try:
         article = Article(link)
         article.download()
@@ -43,7 +34,6 @@ def fetch_article_summary(link):
         print(f"[ERROR] Failed to fetch or summarize article: {e}")
         return "No summary available."
 
-
 def calculate_sentiment(text):
     try:
         analysis = TextBlob(text)
@@ -51,7 +41,6 @@ def calculate_sentiment(text):
     except Exception as e:
         print(f"[ERROR] Sentiment analysis failed: {e}")
         return 0
-
 
 def label_sentiment(score):
     if score > 0.35:
@@ -65,16 +54,17 @@ def label_sentiment(score):
     else:
         return "Bearish"
 
-
 def get_market_news(tickers):
     all_news = []
     today = datetime.now().date()
     one_day_ago = today - timedelta(days=1)
 
     for ticker in tickers:
+        print(f"[DEBUG] Fetching news for ticker: {ticker}")
         stock = yf.Ticker(ticker)
         try:
             news = stock.news
+            print(f"[DEBUG] Fetched {len(news)} news items for ticker {ticker}")
             for item in news:
                 try:
                     publish_timestamp = item.get('providerPublishTime', 0)
@@ -103,50 +93,45 @@ def get_market_news(tickers):
                 except Exception as news_item_error:
                     print(f"[ERROR] Error processing news item: {news_item_error}")
         except Exception as e:
-            print(f"[ERROR] Error retrieving news for {ticker}: {str(e)}")
+            print(f"[ERROR] Error retrieving news for {ticker}: {e}")
+    print(f"[DEBUG] Total news items fetched: {len(all_news)}")
     return pd.DataFrame(all_news)
-
 
 def upload_to_bigquery(df, project_id, dataset_id, table_id):
     try:
-        # Drop 'category' column if present
         if 'category' in df.columns:
             df = df.drop(columns=['category'])
             print("[DEBUG] 'category' column removed from DataFrame.")
 
-        # Automatically convert datetime columns to string
         datetime_columns = df.select_dtypes(include=['datetime64[ns]']).columns
         for col in datetime_columns:
             df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
-        
-        # BigQuery client setup
+
         client = bigquery.Client(project=project_id)
         table_ref = f"{project_id}.{dataset_id}.{table_id}"
 
-        # Define load job configuration to overwrite the data
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
         )
 
-        # Upload data to BigQuery
+        print("[DEBUG] Uploading data to BigQuery.")
+        print(f"[DEBUG] DataFrame shape: {df.shape}")
+        print(f"[DEBUG] DataFrame columns: {df.columns}")
+
         job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
-        job.result()  # Wait for the job to complete
+        job.result()
 
         print(f"[INFO] Data successfully uploaded and overwritten in BigQuery table: {table_ref}")
     except Exception as e:
         print(f"[ERROR] Failed to upload data to BigQuery: {e}")
 
-
-
 def fetch_market_news(request):
-    """
-    HTTP-triggered Cloud Function entry point.
-    """
     try:
-        print("[DEBUG] Function triggered.")
-        # Process the request as needed
+        print("[DEBUG] Cloud Function execution started.")
+
         indices = ['^IXIC', '^DJI', '^RUT', '^GSPC']
         market_news = get_market_news(tickers=indices)
+        print(f"[DEBUG] Market news fetched: {len(market_news)} rows.")
         if not market_news.empty:
             market_news['category'] = 'General'
 
@@ -157,10 +142,12 @@ def fetch_market_news(request):
             'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
         ]
         tech_news = get_market_news(tickers=tech_stocks)
+        print(f"[DEBUG] Tech news fetched: {len(tech_news)} rows.")
         if not tech_news.empty:
             tech_news['category'] = 'Tech'
 
         combined_news = pd.concat([market_news, tech_news], ignore_index=True)
+        print(f"[DEBUG] Combined news rows: {len(combined_news)}")
 
         if not combined_news.empty:
             upload_to_bigquery(
@@ -171,8 +158,8 @@ def fetch_market_news(request):
             )
             return jsonify({"status": "success", "message": "News data processed and uploaded to BigQuery."}), 200
         else:
+            print("[DEBUG] No news data to upload.")
             return jsonify({"status": "success", "message": "No news data to upload."}), 200
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-

@@ -1,10 +1,8 @@
 pyarrow
-pandas
-yfinance
-textblob
-newspaper3k
-google-cloud-bigquery
-flask
-lxml[html_clean]
-nltk>=3.7
-
+flask==2.2.5
+yfinance==0.2.26
+pandas==1.5.3
+textblob==0.17.1
+newspaper3k==0.2.8
+google-cloud-bigquery==3.11.3
+nltk==3.8.1
