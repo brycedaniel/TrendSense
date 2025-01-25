@@ -1,9 +1,13 @@
-Date: 1/23/2025
+Date: 1/20/2025
 
-Progress: What have you accomplished since last week’s post?
+Progress:
+This week, I focused on building combined datasets, cleaning and transforming the data, and creating two testing tables. One table provides a per-article breakdown, while the other aggregates data on a per-day basis from the per-article table. These tables will serve as the foundation for my predictive analysis. Additionally, I reached out to Professor Sonora for guidance but have not received a response yet.
 
-Problems: What are you stuck on or struggling with?
+Problems:
+I encountered web scraping issues with the Google Functions setup. Although the code worked for about a month, it is no longer functioning as originally designed. Currently, I am running the code manually to gather articles from the past week. I'm also facing challenges with the analysis and modeling stages. I plan to consult John for assistance on these issues.
 
-Plans: What do you intend to accomplish between now and next week’s post?
+Plans:
+My immediate goal is to refine the tables further to ensure they contain more relevant data. Initial permutation tests using sentiment analysis alone were not statistically significant. To address this, I will begin incorporating large language models (LLMs) to cross-check sentiment and explore how they can be integrated into my code.
 
 Hours:
+It was a busy week, with approximately 18 hours spent on this work.
