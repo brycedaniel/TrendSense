@@ -53,7 +53,8 @@ fill_columns = [
 fill_columns = [col for col in fill_columns if col in filtered_df.columns]
 
 if fill_columns:
-    filtered_df[fill_columns] = filtered_df.groupby('ticker')[fill_columns].fillna(method='ffill')
+    for col in fill_columns:
+        filtered_df[col] = filtered_df.groupby('ticker')[col].transform(lambda group: group.ffill())
 
 # Calculate Day_Percent_Change for market data
 filtered_df['Day_Percent_Change'] = ((filtered_df['Close'] - filtered_df['Open']) / filtered_df['Open'] * 100).round(2)
@@ -72,6 +73,27 @@ if 'Percent_Difference' in filtered_df.columns:
             new_column_name = f'{column}_Diff'
             filtered_df[new_column_name] = (filtered_df[column] - filtered_df['Percent_Difference'])
 
+def calculate_daily_pct_change(group, column):
+    """
+    Calculate daily percentage change for the specified column within the group.
+    Ensures 'publish_date' is retained for mapping.
+    """
+    # Group by publish_date (date part only) and calculate the first value for each day
+    daily_values = group.groupby(group['publish_date'].dt.date).agg(
+        {column: 'first'}
+    ).reset_index()
+    daily_values.rename(columns={'index': 'publish_date'}, inplace=True)
+
+    # Calculate percentage change with no NA fill
+    daily_pct_change = daily_values[column].pct_change(fill_method=None).mul(100).round(2)
+
+    # Create a mapping of publish_date to daily percentage change
+    daily_pct_change_map = dict(zip(daily_values['publish_date'], daily_pct_change))
+
+    # Map percentage changes back to the original group
+    return group['publish_date'].dt.date.map(daily_pct_change_map)
+
+
 # Calculate daily percent changes for specified columns
 pct_change_columns = [
     'RatingScore',
@@ -80,15 +102,10 @@ pct_change_columns = [
     'target_median_price'
 ]
 
-def calculate_daily_pct_change(group, column):
-    daily_values = group.groupby(group['publish_date'].dt.date)[column].first()
-    daily_pct_change = daily_values.pct_change().mul(100).round(2)
-    return group['publish_date'].dt.date.map(daily_pct_change)
-
 for column in pct_change_columns:
     if column in filtered_df.columns:
         new_column = f'{column}_pct_change'
-        filtered_df[new_column] = filtered_df.groupby('ticker').apply(
+        filtered_df[new_column] = filtered_df.groupby('ticker', group_keys=False).apply(
             lambda x: calculate_daily_pct_change(x, column)
         ).reset_index(level=0, drop=True)
 
@@ -122,3 +139,5 @@ output_file_path = "Combined_Clean_2.csv"
 filtered_df.to_csv(output_file_path, index=False)
 
 print(f"Filtered dataset with all calculations saved to {output_file_path}")
+
+
