@@ -1,11 +1,10 @@
-
 from google.cloud import bigquery
 import pandas as pd
-import os
-from datetime import datetime
+
 # Initialize BigQuery client
 client = bigquery.Client()
 
+# Your SQL query
 query = """
 WITH Combined_Table AS (
     SELECT
@@ -78,7 +77,7 @@ SELECT
     sdh.High,
     sdh.Low,
     sdh.Open,
-    sdh.Percent_Difference as Daily_Percent_Difference,
+    -- No more directly pulling Daily_Percent_Difference
     -- Calculate Analyst Score
     (
         (sa.Strong_Buy * 100) +
@@ -152,11 +151,34 @@ ORDER BY
     c.ticker,
     c.hourly_date
 """
-# Run the query
-job = client.query(query)
 
-# Convert results to a DataFrame
+# Run the query and convert results to a DataFrame
+job = client.query(query)
 df = job.to_dataframe()
 
-# Save to CSV locally
+# Fill missing values in Close, Volume, High, Low, Open columns with the previous row's data
+columns_to_fill = ['Close', 'Volume', 'High', 'Low', 'Open']
+df[columns_to_fill] = df[columns_to_fill].ffill()
+
+# Step 1: Sort values by ticker and date
+df = df.sort_values(by=['ticker', 'date_only'])
+
+# Step 2: Compute the daily percent difference
+# Group by ticker and calculate percent change based on the first "Close" value of each day
+df['Daily_Percent_Difference'] = (
+    df.groupby('ticker')['Close']
+    .transform(lambda x: (x - x.shift(1)) / x.shift(1) * 100)
+)
+
+# Step 3: Propagate the calculated value to all rows for the same date and ticker
+df['Daily_Percent_Difference'] = (
+    df.groupby(['ticker', 'date_only'])['Daily_Percent_Difference']
+    .transform('first')
+)
+
+
+# Save the DataFrame to a CSV file locally
 df.to_csv('Combined_Raw.csv', index=False)
+
+print("Data processed and saved to 'Combined_Raw.csv'")
+
