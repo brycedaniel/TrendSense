@@ -48,6 +48,19 @@ if 'Daily_Percent_Difference' in df.columns:
         on=['ticker', 'publish_date_date'],
         how='left'
     )
+# Fill zeros in 'Next_Day_Percent_Change' with the following non-zero value
+def fill_with_next_value(series):
+    # Use forward-fill method to propagate the next non-zero value backward
+    filled_series = series.replace(0, method='bfill')
+    return filled_series
+
+# Apply the function to 'Next_Day_Percent_Change' for each group
+df['Next_Day_Percent_Change'] = (
+    df.groupby('ticker', group_keys=False)['Next_Day_Percent_Change']
+    .apply(fill_with_next_value)
+)
+
+
 
 # Define the mapping for RatingScore
 def map_rating_score(value):
