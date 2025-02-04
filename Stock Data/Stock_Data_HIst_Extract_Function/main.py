@@ -13,60 +13,69 @@ PROJECT_ID = "trendsense"
 DATASET_ID = "stock_data"
 TABLE_ID = "stock_data_history"
 
-# Define the list of stock tickers
+# Define stock tickers
 TICKERS = [
     'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
     'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
-    'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS', 'META', 'RGTI','QUBT',
+    'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS', 'META', 'RGTI', 'QUBT',
     'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
 ]
 
+# NASDAQ Composite Index Ticker
+NASDAQ_TICKER = "^IXIC"
+
 def extract_stock_close(request):
-    """Cloud Function to fetch current day stock data and save to BigQuery."""
+    """Cloud Function to fetch stock data and save to BigQuery."""
     try:
-        # Define today's date and previous business day
         today = datetime.today()
-        
-        # Adjust for weekends and market holidays
-        start_date = today - timedelta(days=3)
-        end_date = today
-        
-        logger.info(f"Fetching stock data from {start_date} to {end_date}")
-        
-        # Fetch stock data using a date range to ensure data availability
+        start_date = today - timedelta(days=3)  # Normal tickers (last 3 days)
+        nasdaq_start_date = timedelta(days=3)  # NASDAQ fetch start date
+
+        logger.info(f"Fetching stock data from {start_date} to {today}")
+        logger.info(f"Fetching NASDAQ (^IXIC) data from {nasdaq_start_date} to {today}")
+
+        # Fetch stock data for normal tickers
         try:
-            stock_data = yf.download(TICKERS, start=start_date, end=end_date, group_by='ticker', threads=True)
+            stock_data = yf.download(TICKERS, start=start_date, end=today, group_by='ticker', threads=5)
         except Exception as download_error:
             logger.error(f"Failed to download stock data: {download_error}")
             return f"Failed to download stock data: {download_error}"
 
-        # Check if data was returned
-        if stock_data.empty:
-            logger.warning(f"No data available for date range {start_date} to {end_date}")
-            return f"No data available for date range {start_date} to {end_date}"
+        # Fetch NASDAQ Composite Index (^IXIC) data
+        try:
+            nasdaq_data = yf.download(NASDAQ_TICKER, start=nasdaq_start_date, end=today)
+        except Exception as nasdaq_error:
+            logger.error(f"Failed to download NASDAQ data: {nasdaq_error}")
+            return f"Failed to download NASDAQ data: {nasdaq_error}"
 
-        # Create an empty list to store reformatted data
+        # 🛠 Flatten NASDAQ MultiIndex Columns
+        if isinstance(nasdaq_data.columns, pd.MultiIndex):
+            nasdaq_data.columns = [col[0] for col in nasdaq_data.columns]
+        nasdaq_data = nasdaq_data.reset_index()  # Convert Date index into a column
+
+        # Detect correct column names dynamically
+        column_map = {"Close": None, "Open": None, "High": None, "Low": None, "Volume": None}
+        for col in nasdaq_data.columns:
+            for key in column_map.keys():
+                if key in col:
+                    column_map[key] = col
+        nasdaq_data = nasdaq_data.rename(columns=column_map)
+
         formatted_data = []
 
-        # Process each ticker to extract relevant information
+        # Process normal tickers
         for ticker in TICKERS:
             try:
-                if ticker in stock_data.columns.get_level_values(0):  # Ensure ticker exists in data
-                    # Select the most recent day's data
-                    ticker_data = stock_data[ticker].iloc[-1]
+                if ticker in stock_data.columns.get_level_values(0):
+                    ticker_data = stock_data[ticker].iloc[-1]  # Get latest data
                     
-                    # Ensure we have valid data for the current day
                     if pd.notna(ticker_data['Close']):
-                        # Calculate percent difference from the previous close
-                        try:
-                            previous_close = stock_data[ticker].iloc[-2]['Close']
-                            current_close = ticker_data['Close']
-                            percent_difference = ((current_close - previous_close) / previous_close)
-                        except (IndexError, TypeError):
-                            previous_close = None
-                            percent_difference = None
+                        previous_close = stock_data[ticker]['Close'].shift(1).iloc[-1]
+                        percent_difference = None
+                        
+                        if pd.notna(previous_close):
+                            percent_difference = ((ticker_data['Close'] - previous_close) / previous_close)
 
-                        # Append today's data
                         formatted_data.append({
                             "Date": today.strftime('%Y-%m-%d'),
                             "Ticker": ticker,
@@ -81,10 +90,32 @@ def extract_stock_close(request):
                 logger.error(f"Error processing {ticker}: {ticker_error}")
                 continue
 
-        # Convert the list of dictionaries to a DataFrame
+        # Process NASDAQ Data
+        for _, row in nasdaq_data.iterrows():
+            try:
+                previous_close = nasdaq_data["Close"].shift(1).iloc[-1] if len(nasdaq_data) > 1 else None
+                percent_difference = None
+
+                if pd.notna(previous_close):
+                    percent_difference = ((row["Close"] - previous_close) / previous_close)
+
+                formatted_data.append({
+                    "Date": row["Date"].strftime('%Y-%m-%d'),
+                    "Ticker": NASDAQ_TICKER,
+                    "Close": row["Close"],
+                    "Volume": row["Volume"] if "Volume" in nasdaq_data.columns else None,
+                    "High": row["High"] if "High" in nasdaq_data.columns else None,
+                    "Low": row["Low"] if "Low" in nasdaq_data.columns else None,
+                    "Open": row["Open"] if "Open" in nasdaq_data.columns else None,
+                    "Percent_Difference": percent_difference
+                })
+            except Exception as nasdaq_error:
+                logger.error(f"Error processing NASDAQ (^IXIC): {nasdaq_error}")
+                continue
+
+        # Convert to DataFrame
         reformatted_data = pd.DataFrame(formatted_data)
 
-        # Check if reformatted data is empty
         if reformatted_data.empty:
             logger.warning(f"No valid stock data available for {today}")
             return f"No valid stock data available for {today}"
@@ -107,7 +138,7 @@ def extract_stock_close(request):
                 job_config=job_config
             )
             
-            # Wait for job to complete and log any errors
+            # Wait for job to complete
             job.result()
             
             logger.info(f"Stock data for {today} successfully saved to {table_ref}")
@@ -120,9 +151,6 @@ def extract_stock_close(request):
     except Exception as general_error:
         logger.error(f"Unexpected error in extract_stock_close: {general_error}")
         return f"Unexpected error: {general_error}"
-
-# Note: If this is a Google Cloud Function, you might need to add a trigger
-# such as a HTTP trigger or a scheduled cloud function trigger
 
 
 

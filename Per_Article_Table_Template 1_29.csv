@@ -1,6 +1,6 @@
-publish_date,ticker,AI Score *New,Sentiment Score *News,Health Score *New,Aggregated Score *New,average_market_percent_change,,Forward_30min_Change_Diff,Forward_45min_Change_Diff,Forward_60min_Change_Diff,Current day change,End of Day ,Next Day Close
-12/11/2024 5:29,AAPL,Combination of Publisher Credibility and AI opinion,,,,0.015609828,,,,,,%,%
-12/11/2024 6:10,AAPL,,Combination of all Sentiment,,,0.015609828,,,,,,,
+publish_date,ticker,AI Score *New,Sentiment Score *News,Health Score *New,Aggregated Score *New,average_market_percent_change,,Forward_30min_Change_Diff,Forward_45min_Change_Diff,Forward_60min_Change_Diff - Relative,Current day change - 1 hour,End of Day ,Next Day Close
+12/11/2024 5:29,AAPL,Combination of Publisher Credibility and AI opinion,,,,0.015609828,,,,,Comes from clean combine,%,%
+12/11/2024 6:10,AAPL,,Combination of all Sentiment,,,0.015609828,,,,,,"Used only for end of trading day with aggreagate AI, Sentiment, Healthe",
 12/11/2024 6:54,AAPL,,,"Combination of  Rating Score, Analyst Score, percentage price change, and target score",,0.015609828,,,,,,,
 12/11/2024 8:36,AAPL,,,,,0.015609828,,0.002708157,0.002428058,0.003596077,,,
 12/11/2024 8:36,AAPL,,,,,0.015609828,,0.002708157,0.002428058,0.003596077,,,
