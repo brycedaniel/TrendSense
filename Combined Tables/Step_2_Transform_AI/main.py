@@ -4,11 +4,15 @@ import numpy as np
 from datetime import datetime
 import pandas_gbq
 import json
+import re
+from openai import OpenAI
+import os
 
 
 def transform_data(request):
     # Initialize BigQuery client
     client = bigquery.Client()
+    openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
     
     # Define schema
     schema = [
@@ -41,7 +45,7 @@ def transform_data(request):
         bigquery.SchemaField("Day_Percent_Change", "FLOAT"),
         bigquery.SchemaField("Next_Day_Percent_Change", "FLOAT"),
         bigquery.SchemaField("Forward_60min_Change", "FLOAT"),
-        bigquery.SchemaField("AI Score", "INTEGER"),
+        bigquery.SchemaField("AI Score", "FLOAT"),
         bigquery.SchemaField("publisher score", "INTEGER")
     ]
     
@@ -170,7 +174,59 @@ def transform_data(request):
         }
         
         df["publisher score"] = df["publisher"].map(publisher_scores).fillna(0).astype(int)
-        df['AI Score'] = datetime.now().minute
+        
+        def extract_numeric_score(response):
+            """Extracts the first valid float from the OpenAI response."""
+            match = re.search(r"-?\d+(\.\d+)?", response)
+            if match:
+                return float(match.group(0))
+            return None
+
+        def get_financial_impact(title, ticker, openai_client):
+            """Analyzes financial market impact from the perspective of a specific ticker."""
+            try:
+                completion = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are an expert financial analyst specializing in stock market movements."},
+                        {"role": "user", "content": f"""
+                        Evaluate the financial market impact of this headline from the perspective of **{ticker}**. Assign a **precise** numerical score between -10 and 10.
+
+                        **GUIDELINES:**
+                        - **Perspective Matters**: The score should reflect how this affects **{ticker}**, not just the industry as a whole.
+                        - **Competitive Awareness**: If the news benefits a competitor, it may negatively impact **{ticker}**.
+                        - **Market Sentiment**: Weigh factors like stock movements, investor reactions, regulatory concerns, or sector trends.
+                        - **STRICT FORMAT**: The response must contain only a **single** numerical value (e.g., -7.5, 3.2, 0). No explanations or extra text.
+
+                        **News Headline:** "{title}"
+
+                        **ONLY OUTPUT A SINGLE NUMBER:**"""}
+                    ],
+                    max_tokens=10,
+                    temperature=0.5
+                )
+
+                raw_response = completion.choices[0].message.content.strip()
+                
+                score = extract_numeric_score(raw_response)
+                if score is not None and -10 <= score <= 10:
+                    return score
+                else:
+                    print(f"Invalid numeric response for '{title}' (Ticker: {ticker}): {raw_response}")
+                    return None
+
+            except Exception as e:
+                print(f"Error processing title: {title} (Ticker: {ticker})\nError: {e}")
+                return None
+        
+        
+        df['AI Score'] = df.apply(lambda row: get_financial_impact(row['title'], row['ticker'], openai_client), axis=1)
+        
+        # Handle any None values from the API
+        df['AI Score'] = df['AI Score'].fillna(0.0)
+        
+        # Ensure AI Score is float type
+        df['AI Score'] = df['AI Score'].astype(float)
         
         # Rating score mapping with NaN handling
         def map_rating_score(value):
@@ -337,7 +393,7 @@ def transform_data(request):
             'average_market_percent_change', 'RatingScore', 'analyst_score', 'Target_Pct_Change',
             'target_score', 'Forward_15min_Change_Diff', 'Forward_30min_Change_Diff',
             'Forward_45min_Change_Diff', 'Forward_60min_Change_Diff', 'Close',
-            'Day_Percent_Change', 'Next_Day_Percent_Change', 'Forward_60min_Change'
+            'Day_Percent_Change', 'Next_Day_Percent_Change', 'Forward_60min_Change', 'AI Score'
         ]
         
         for col in float_columns:

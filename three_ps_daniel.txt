@@ -1,3 +1,22 @@
+Week 2
+
+Date: 2/4/2025
+
+Progress:
+This week, I focused on further cleaning the data and narrowing my scope to ensure the independent variables are more manageable. All code has been developed, and I am now working on deploying it to Google Cloud Functions.
+
+Problems:
+I've encountered several issues with Google Cloud Functions, as the environment is not very forgiving. A significant amount of time has been spent troubleshooting and modifying the code to ensure compatibility. Additionally, I have not received a response from my client.
+
+Plans:
+My goal is to have all code fully operational in the cloud by the end of the week, including the integration of AI analysis. I will also develop a strategy to easily adjust weights on key metrics for greater flexibility in analysis.
+
+Hours:
+Approximately 20 hours this week
+
+
+Week 1
+
 Date: 1/20/2025
 
 Progress:
