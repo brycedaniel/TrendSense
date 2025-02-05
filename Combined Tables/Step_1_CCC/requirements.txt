@@ -1,0 +1,4 @@
+google-cloud-bigquery==3.20.1
+pandas==2.2.1
+pyarrow
+db-dtypes
