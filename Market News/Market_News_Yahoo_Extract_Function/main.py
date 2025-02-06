@@ -134,12 +134,12 @@ def fetch_and_save_market_news():
     processes it with sentiment analysis, and uploads it to BigQuery.
     """
     # Define indices and tickers to fetch news for
-    indices = ['^IXIC', '^DJI', '^RUT', '^GSPC']  # Major market indices
+    indices = ['^IXIC']  # Major market indices
     market_news = get_market_news(tickers=indices)
 
     tech_stocks = [
         'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
-        'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+        'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
         'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS',
         'META', 'RGTI', 'QUBT', 'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
     ]

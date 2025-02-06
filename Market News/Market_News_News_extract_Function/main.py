@@ -31,7 +31,7 @@ table_id = os.getenv('BIGQUERY_TABLE_ID', 'News_News_Extract')
 # List of tickers to search news for
 tickers = [
     'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
-    'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+    'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
     'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META', 'RGTI', 'QUBT',
     'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
 ]

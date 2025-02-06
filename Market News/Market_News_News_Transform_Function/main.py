@@ -29,6 +29,23 @@ class NewsDataProcessor:
         self.client = bigquery.Client()
         self.logger = logging.getLogger(__name__)
     # Initialize the BigQuery client and logger for database operations and tracking.
+    
+    def filter_existing_data(self, new_data: pd.DataFrame, target_table: str) -> pd.DataFrame:
+        if new_data.empty:
+            return new_data
+
+        new_data['unique_id'] = new_data['ticker'] + '_' + new_data['publish_date'].astype(str)
+
+        existing_ids_query = f"""
+        SELECT DISTINCT CONCAT(ticker, '_', CAST(publish_date AS STRING)) AS unique_id
+        FROM `{target_table}`
+        """
+        existing_ids = self.client.query(existing_ids_query).to_dataframe()
+
+        filtered_data = new_data[~new_data['unique_id'].isin(existing_ids['unique_id'])]
+        self.logger.info(f"Total new rows: {len(filtered_data)} (out of {len(new_data)} original rows)")
+
+        return filtered_data.drop(columns=['unique_id'])
 
     @staticmethod
     def calculate_sentiment(text: Optional[str]) -> float:
@@ -70,6 +87,7 @@ class NewsDataProcessor:
             self.logger.info(f"Table {table_id} created successfully with defined schema.")
     # Check if the target table exists in BigQuery. If not, create it using the defined schema.
 
+    '''  Testing a more effecient code above
     def filter_existing_data(self, new_data: pd.DataFrame, target_table: str) -> pd.DataFrame:
         """
         Filter out rows that already exist in the target table based on publish_date.
@@ -127,7 +145,7 @@ class NewsDataProcessor:
 
         return filtered_data
     # Filters out data that already exists in the target table by comparing `publish_date`.
-
+     '''
     def transform_and_load_data(self, source_table: str, target_table: str):
         """
         Transform the data from the source table and load it into the target table.

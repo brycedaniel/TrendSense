@@ -55,7 +55,7 @@ def get_market_news(api_key):
 # Define the specific tickers to include
 TICKERS_TO_INCLUDE = [
     'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
-    'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+    'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
     'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZ', 'CRM', 'NOW', 'CHTR', 'TDS', 'META',
     'RGTI', 'QUBT', 'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
 ]
@@ -69,10 +69,13 @@ def process_news_items(news_items):
         mst = pytz.timezone("MST")  # Define MST timezone
         processed_items = []
         for item in news_items:
-            # Filter based on the tickers in the item's ticker_sentiment
-            tickers = [ts['ticker'] for ts in item.get('ticker_sentiment', [])]
-            if not set(tickers).intersection(TICKERS_TO_INCLUDE):
-                continue  # Skip this item if no tickers match
+            # Get only the tickers that are in our TICKERS_TO_INCLUDE list
+            article_tickers = [ts['ticker'] for ts in item.get('ticker_sentiment', [])]
+            matching_tickers = list(set(article_tickers).intersection(TICKERS_TO_INCLUDE))
+            
+            # Skip if no matching tickers
+            if not matching_tickers:
+                continue
             
             # Convert publish_date format and timezone
             raw_date = item.get('time_published', '')
@@ -82,23 +85,25 @@ def process_news_items(news_items):
             except ValueError:
                 mst_date = "Invalid Date"
 
-            processed_item = {
-                'ticker': ', '.join(tickers),
-                'title': item.get('title', ''),
-                'summary': item.get('summary', ''),
-                'publisher': item.get('source', ''),
-                'link': item.get('url', ''),
-                'publish_date': mst_date,
-                'related_tickers': ', '.join(tickers),
-                'source': 'Alpha',
-                'overall_sentiment_score': item.get('overall_sentiment_score', ''),
-                'overall_sentiment_label': item.get('overall_sentiment_label', '')
-            }
-            processed_items.append(processed_item)
+            # Create separate entries for each matching ticker
+            for ticker in matching_tickers:
+                processed_item = {
+                    'ticker': ticker,  # Single ticker instead of all tickers
+                    'title': item.get('title', ''),
+                    'summary': item.get('summary', ''),
+                    'publisher': item.get('source', ''),
+                    'link': item.get('url', ''),
+                    'publish_date': mst_date,
+                    'related_tickers': ', '.join(matching_tickers),  # Only include matching tickers
+                    'source': 'Alpha',
+                    'overall_sentiment_score': item.get('overall_sentiment_score', ''),
+                    'overall_sentiment_label': item.get('overall_sentiment_label', '')
+                }
+                processed_items.append(processed_item)
         
         # Reorder columns
         column_order = ['ticker', 'title', 'summary', 'publisher', 'link', 'publish_date', 
-                        'related_tickers', 'source', 'overall_sentiment_score', 'overall_sentiment_label']
+                       'related_tickers', 'source', 'overall_sentiment_score', 'overall_sentiment_label']
         return pd.DataFrame(processed_items)[column_order]
     except Exception as e:
         logger.error(f"Error processing news items: {str(e)}")

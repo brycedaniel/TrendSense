@@ -3,20 +3,11 @@ import pandas as pd
 import os
 
 def process_data(request):
-    """
-    Google Cloud Function to process data and export to BigQuery
-    
-    Args:
-        event (dict): Event payload.
-        context (google.cloud.functions.Context): Metadata for the event.
-    """
-    # Initialize BigQuery client
     client = bigquery.Client()
 
-    # SQL query (same as original script)
     query = """
     WITH Combined_Table AS (
-        SELECT
+        SELECT DISTINCT
             COALESCE(a.ticker, b.ticker) AS ticker,
             COALESCE(a.publish_date, b.publish_date) AS publish_date,
             FORMAT_TIMESTAMP('%Y-%m-%d %H:%M', TIMESTAMP_SECONDS(
@@ -57,16 +48,18 @@ def process_data(request):
         FULL OUTER JOIN
             `trendsense.market_data.Market_News_NAPI` AS b
         ON
-            a.ticker = b.ticker AND a.publish_date = b.publish_date
+            a.ticker = b.ticker 
+            AND a.publish_date = b.publish_date
+            AND a.title = b.title
         WHERE
             COALESCE(a.ticker, b.ticker) IN ('AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
-                                             'BWXT', 'ARBK', 'AMD', 'NVDA', 'BTC', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+                                             'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
                                              'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS',
                                              'META', 'RGTI', 'QUBT', 'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO',
-                                             '^IXIC', '^DJI', '^RUT', '^GSPC')
+                                             '^IXIC')
     )
 
-    SELECT 
+    SELECT DISTINCT
         c.*,
         s1.Current_Price,
         s1.Percent_Difference,
@@ -152,38 +145,22 @@ def process_data(request):
     ON
         c.ticker = sdh.Ticker AND 
         c.date_only = FORMAT_TIMESTAMP('%Y-%m-%d', TIMESTAMP(sdh.Date))
+    WHERE c.title IS NOT NULL
     ORDER BY
         c.ticker,
         c.hourly_date
     """
 
-    def calculate_daily_pct_change(group, column):
-        """
-        Calculate daily percentage change for the specified column within the group.
-        Ensures 'publish_date' is retained for mapping.
-        """
-        daily_values = group.groupby(group['publish_date'].dt.date).agg(
-            {column: 'first'}
-        ).reset_index()
-        daily_values.rename(columns={'index': 'publish_date'}, inplace=True)
-        
-        daily_pct_change = daily_values[column].pct_change(fill_method=None).mul(100).round(2)
-        daily_pct_change_map = dict(zip(daily_values['publish_date'], daily_pct_change))
-        
-        return group['publish_date'].dt.date.map(daily_pct_change_map)
-
     try:
         print("Executing BigQuery query...")
-        # Run the query and convert results to a DataFrame
         job = client.query(query)
         df = job.to_dataframe()
         
-        # Initial data processing
         print("Processing initial data...")
         columns_to_fill = ['Close', 'Volume', 'High', 'Low', 'Open']
         df[columns_to_fill] = df[columns_to_fill].ffill()
         
-        df = df.sort_values(by=['ticker', 'date_only'])
+        df = df.sort_values(by=['ticker', 'publish_date'])
         df['Daily_Percent_Difference'] = (
             df.groupby('ticker')['Close']
             .transform(lambda x: (x - x.shift(1)) / x.shift(1) * 100)
@@ -193,7 +170,6 @@ def process_data(request):
             .transform('first')
         )
         
-        # Filter and clean data
         print("Filtering and cleaning data...")
         df = df[df['word_count'] > 7]
         
@@ -210,16 +186,13 @@ def process_data(request):
         if 'publisher' in df.columns:
             df = df[df['publisher'].isin(allowed_publishers)]
         
-        # Drop unnecessary columns
         columns_to_drop = ['Strong_Buy', 'Buy', 'Hold', 'Sell', 'Strong_Sell',
                           'hourly_date', 'date_only', 'week_of_year']
         df = df.drop(columns=columns_to_drop, errors='ignore')
         
-        # Convert and sort by publish date
         df['publish_date'] = pd.to_datetime(df['publish_date'], errors='coerce')
         df = df.sort_values(by=['ticker', 'publish_date'])
         
-        # Forward fill missing values
         fill_columns = [
             'RatingScore', 'analyst_score', 'reward_score', 'risk_score',
             'target_score', 'target_median_price', 'Close', 'Volume',
@@ -230,7 +203,6 @@ def process_data(request):
         for col in fill_columns:
             df[col] = df.groupby('ticker')[col].transform(lambda group: group.ffill())
         
-        # Calculate additional metrics
         print("Calculating additional metrics...")
         df['Day_Percent_Change'] = ((df['Close'] - df['Open']) / df['Open'] * 100).round(2)
         
@@ -245,19 +217,28 @@ def process_data(request):
                     new_column_name = f'{column}_Diff'
                     df[new_column_name] = (df[column] - df['Percent_Difference'])
         
-        # Calculate percentage changes
-        pct_change_columns = [
-            'RatingScore', 'analyst_score', 'target_score', 'target_median_price'
-        ]
-        
+        def calculate_daily_pct_change(group, column):
+            """Calculate daily percentage change for the specified column within the group."""
+            daily_values = group.groupby(group['publish_date'].dt.date)[column].first().reset_index()
+            daily_pct_change = daily_values[column].pct_change(fill_method=None).mul(100).round(2)
+            return pd.Series(daily_pct_change.values, index=daily_values.index)
+
+        # Assuming df is your dataframe
+        pct_change_columns = ['RatingScore', 'analyst_score', 'target_score', 'target_median_price']
+
         for column in pct_change_columns:
             if column in df.columns:
                 new_column = f'{column}_pct_change'
-                df[new_column] = df.groupby('ticker', group_keys=False).apply(
-                    lambda x: calculate_daily_pct_change(x, column)
+                df[new_column] = df.groupby('ticker').apply(
+                    lambda x: x['publish_date'].dt.date.map(
+                        dict(zip(
+                            x.groupby(x['publish_date'].dt.date)[column].first().index,
+                            calculate_daily_pct_change(x, column)
+                        ))
+                    )
                 ).reset_index(level=0, drop=True)
+            
         
-        # Calculate sentiment metrics
         df['average_sentiment'] = df[['textblob_sentiment', 'vader_sentiment']].mean(axis=1)
         
         daily_avg_sentiment = df.groupby(df['publish_date'].dt.date)['average_sentiment'].mean().reset_index()
@@ -268,33 +249,29 @@ def process_data(request):
         df.drop(columns=['publish_date_y'], inplace=True, errors='ignore')
         df.rename(columns={'publish_date_x': 'publish_date'}, inplace=True)
         
-        # Calculate market changes
         daily_avg_change = df.groupby(df['publish_date_date'])['Percent_Difference'].mean().reset_index()
         daily_avg_change.rename(columns={'Percent_Difference': 'Average_Market_Change'}, inplace=True)
         
         df = df.merge(daily_avg_change, on='publish_date_date', how='left')
         df.drop(columns=['publish_date_date'], inplace=True)
         
-        # Add Unique ID column
         df['Unique_ID'] = df['ticker'] + '_' + df['publish_date'].dt.strftime('%Y-%m-%d_%H:%M:%S')
 
-        # Prepare BigQuery table destination
+        df = df.drop_duplicates(subset=['ticker', 'publish_date', 'title'], keep='first')
+        
         table_id = 'trendsense.combined_data.step_1_combine_clean'
         
-        # Create a job config with auto-detect schema
         job_config = bigquery.LoadJobConfig(
-            autodetect=True,  # Automatically detect schema
-            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE  # Overwrite existing table
+            autodetect=True,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
         )
         
-        
-        # Upload DataFrame to BigQuery
         job = client.load_table_from_dataframe(
             dataframe=df, 
             destination=table_id, 
             job_config=job_config
         )
-        job.result()  # Wait for the job to complete
+        job.result()
         
         print("Data successfully uploaded to BigQuery.")
         return "Data processing completed successfully.", 200
