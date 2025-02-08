@@ -47,8 +47,8 @@ def transform_data():
         bigquery.SchemaField("Forward_45min_Change_Diff", "FLOAT"),
         bigquery.SchemaField("Forward_60min_Change_Diff", "FLOAT"),
         bigquery.SchemaField("Close", "FLOAT"),
-        bigquery.SchemaField("Day_Percent_Change", "FLOAT"),
-        bigquery.SchemaField("Next_Day_Percent_Change", "FLOAT"),
+        bigquery.SchemaField("Daily_Percent_Difference", "FLOAT"),
+        bigquery.SchemaField("Next_Daily_Percent_Difference", "FLOAT"),
         bigquery.SchemaField("Forward_60min_Change", "FLOAT"),
         bigquery.SchemaField("AI Score", "FLOAT"),
         bigquery.SchemaField("publisher score", "INTEGER")
@@ -127,18 +127,14 @@ def transform_data():
         df['daily_sentiment_class'] = df['daily_avg_ticker_sentiment'].apply(classify_sentiment)
         df['average_market_sentiment_class'] = df['average_market_sentiment'].apply(classify_sentiment)
         
-        # Calculate Day Percent Change with NaN handling
-        if 'Close' in df.columns and 'Open' in df.columns:
-            df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-            df['Open'] = pd.to_numeric(df['Open'], errors='coerce')
-            df['Day_Percent_Change'] = ((df['Close'] - df['Open']) / df['Open'] * 100).round(2)
+      
         
         # Calculate Next Day Percent Change
-        if 'Day_Percent_Change' in df.columns:
-            next_day_change = df.groupby(['ticker', 'publish_date_date'])['Day_Percent_Change'].mean().reset_index()
-            next_day_change['Next_Day_Percent_Change'] = next_day_change.groupby('ticker')['Day_Percent_Change'].shift(-1)
+        if 'Daily_Percent_Difference' in df.columns:
+            next_day_change = df.groupby(['ticker', 'publish_date_date'])['Daily_Percent_Difference'].mean().reset_index()
+            next_day_change['Next_Daily_Percent_Difference'] = next_day_change.groupby('ticker')['Daily_Percent_Difference'].shift(-1)
             df = df.merge(
-                next_day_change[['ticker', 'publish_date_date', 'Next_Day_Percent_Change']],
+                next_day_change[['ticker', 'publish_date_date', 'Next_Daily_Percent_Difference']],
                 on=['ticker', 'publish_date_date'],
                 how='left'
             )
@@ -375,7 +371,7 @@ def transform_data():
             'Target_Pct_Change', 'target_score', 'ValuationStatus',
             'Forward_15min_Change_Diff', 'Forward_30min_Change_Diff',
             'Forward_45min_Change_Diff', 'Forward_60min_Change_Diff',
-            'Close', 'Day_Percent_Change', 'Next_Day_Percent_Change',
+            'Close', 'Daily_Percent_Difference', 'Next_Daily_Percent_Difference',
             'Forward_60min_Change', 'AI Score', 'publisher score'
         ]
         
@@ -396,7 +392,7 @@ def transform_data():
             'average_market_percent_change', 'RatingScore', 'analyst_score', 'Target_Pct_Change',
             'target_score', 'Forward_15min_Change_Diff', 'Forward_30min_Change_Diff',
             'Forward_45min_Change_Diff', 'Forward_60min_Change_Diff', 'Close',
-            'Day_Percent_Change', 'Next_Day_Percent_Change', 'Forward_60min_Change', 'AI Score'
+            'Daily_Percent_Difference', 'Next_Daily_Percent_Difference', 'Forward_60min_Change', 'AI Score'
         ]
         
         for col in float_columns:

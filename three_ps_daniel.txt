@@ -1,3 +1,20 @@
+Week 3
+
+Date: 2/11/2025
+
+Progress:
+This week, I successfully deployed the code to Google Cloud Functions after resolving the earlier compatibility issues. All code is now running smoothly in the cloud. The AI analysis component has been integrated, and I’ve completed the final data tables for predictive results, as well as the test and train datasets. Additionally, I’ve developed a framework that allows for dynamic adjustment of key metric weights, enhancing the flexibility of the analysis.
+
+Problems:
+While deployment issues were resolved, I ran into minor performance inefficiencies in the cloud environment, which required some optimization. I’m still awaiting feedback from the client, which has delayed progress on final adjustments and validation of the results.
+
+Plans:
+Next week, I’ll start working on the predictive modeling phase to identify the model that best suits the data for accurate results. Pending client feedback, I will adjust the model parameters accordingly and prepare a draft report summarizing findings to date.
+
+Hours:
+Approximately 22 hours this week
+
+
 Week 2
 
 Date: 2/4/2025
