@@ -43,6 +43,9 @@ def process_data(request):
             df_filtered["average_market_sentiment"] * 0.20
         )
 
+            # Replace NaN values in RatingScore with 2
+        df_filtered["RatingScore"] = df_filtered["RatingScore"].fillna(2)
+
         # Compute Health Score
         df_filtered["Health_Score"] = (
             df_filtered["RatingScore"] * 100 * 0.25 +  
@@ -51,6 +54,7 @@ def process_data(request):
             df_filtered["Target_Pct_Change"] * 50 * 0.125
         )
 
+        # Drop rows where Health_Score is NaN
         df_filtered = df_filtered.dropna(subset=["Health_Score"])
 
         df_filtered["Aggregated_Score"] = df_filtered[["AI_Score", "Sentiment Score", "Health_Score"]].mean(axis=1)
@@ -63,7 +67,7 @@ def process_data(request):
         )
 
         df_final = df_filtered[[
-            "Unique_ID", "publish_date", "ticker", "AI_Score", "Daily_Avg_AI_Score", "Sentiment Score", "Health_Score", 
+            "Unique_ID", "publish_date", "date", "ticker", "AI_Score", "Daily_Avg_AI_Score", "Sentiment Score", "Health_Score", 
             "Aggregated_Score", "Relative_1HR_Chg", "Open_1HR_Change", "Daily_Percent_Difference", 
             "Next_Daily_Percent_Difference"
         ]]
@@ -72,6 +76,7 @@ def process_data(request):
             schema = [
                 bigquery.SchemaField("Unique_ID", "STRING"),
                 bigquery.SchemaField("publish_date", "TIMESTAMP"),
+                bigquery.SchemaField("date", "DATE"),  
                 bigquery.SchemaField("ticker", "STRING"),
                 bigquery.SchemaField("AI_Score", "FLOAT"),
                 bigquery.SchemaField("Daily_Avg_AI_Score", "FLOAT"),

@@ -28,7 +28,8 @@ def extract_stock_close(request):
     """Cloud Function to fetch stock data and save to BigQuery."""
     try:
         today = datetime.today()
-        start_date = today - timedelta(days=3)  # Normal tickers (last 3 days)
+        nasdaq_start_date = today - timedelta(days=3)  # Correct NASDAQ fetch start date
+
         nasdaq_start_date = timedelta(days=3)  # NASDAQ fetch start date
 
         logger.info(f"Fetching stock data from {start_date} to {today}")

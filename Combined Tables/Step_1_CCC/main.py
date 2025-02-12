@@ -78,14 +78,16 @@ def process_data(request):
         sdh.High,
         sdh.Low,
         sdh.Open,
-        (
+       (
             (sa.Strong_Buy * 100) +
             (sa.Buy * 75) +
             (sa.Hold * 50) +
             (sa.Sell * 25) +
             (sa.Strong_Sell * 0)
         ) / 
-        NULLIF(sa.Strong_Buy + sa.Buy + sa.Hold + sa.Sell + sa.Strong_Sell, 0) AS analyst_score,
+        NULLIF(sa.Strong_Buy + sa.Buy + sa.Hold + sa.Sell + sa.Strong_Sell, 0) 
+        + 
+        ((sa.Strong_Buy + sa.Buy + sa.Hold + sa.Sell + sa.Strong_Sell) / 4.0) AS analyst_score,
         (
             (sa.Target_High_Price - s1.Current_Price) /
             NULLIF(s1.Current_Price, 0)
