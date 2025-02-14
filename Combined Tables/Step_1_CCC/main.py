@@ -56,7 +56,7 @@ def process_data(request):
                                              'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
                                              'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS',
                                              'META', 'RGTI', 'QUBT', 'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO',
-                                             '^IXIC')
+                                             '^IXIC', '^GSPC')
     )
 
     SELECT DISTINCT

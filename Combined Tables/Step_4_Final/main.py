@@ -27,11 +27,6 @@ def process_stock_data(request):
             Health_Score
           FROM
             `{SOURCE_TABLE}`
-          WHERE
-            Aggregated_Score IS NOT NULL AND Aggregated_Score != 0
-            AND AI_Score IS NOT NULL AND AI_Score != 0
-            AND `Sentiment Score` IS NOT NULL AND `Sentiment Score` != 0
-            AND Health_Score IS NOT NULL AND Health_Score != 0
         ),
 
         next_day_data AS (
@@ -44,10 +39,10 @@ def process_stock_data(request):
             `{STOCK_HISTORY_TABLE}`
         )
 
-        SELECT
-          bp.ticker,
-          DATE(bp.date) as date,
-          bp.Stock_Category,
+        SELECT DISTINCT
+          hist.Ticker as ticker,
+          DATE(hist.Date) as date,
+          COALESCE(bp.Stock_Category, 'Unknown') as Stock_Category,
           bp.Aggregated_Score,
           bp.AI_Score,
           bp.`Sentiment Score`,
@@ -56,22 +51,24 @@ def process_stock_data(request):
           hist.Percent_Difference as Avg_Daily_Percent_Difference,
           nd.Next_Day_Percent as Avg_Next_Daily_Percent_Difference
         FROM
-          base_predictive bp
-        LEFT JOIN
           `{STOCK_HISTORY_TABLE}` hist
+        LEFT JOIN
+          base_predictive bp
         ON
-          LOWER(bp.ticker) = LOWER(hist.Ticker)
-          AND DATE(bp.date) = DATE(hist.Date)
+          LOWER(hist.Ticker) = LOWER(bp.ticker)
+          AND DATE(hist.Date) = DATE(bp.date)
         LEFT JOIN
           next_day_data nd
         ON
-          LOWER(bp.ticker) = LOWER(nd.ticker)
-          AND DATE(bp.date) = DATE(nd.date)
+          LOWER(hist.Ticker) = LOWER(nd.ticker)
+          AND DATE(hist.Date) = DATE(nd.date)
+        WHERE 
+          hist.Date IS NOT NULL
         ORDER BY
-          bp.ticker,
-          bp.date;
-        """
-
+          date,
+          ticker;
+                                        
+          """
         # Execute query and load data into a DataFrame
         query_job = client.query(query)
         df = query_job.to_dataframe()

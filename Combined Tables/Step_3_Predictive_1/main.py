@@ -23,7 +23,7 @@ def process_data(request):
         if "Unique_ID" not in df2.columns:
             raise ValueError("Unique_ID column is missing in source table")
 
-        tickers_to_exclude = ["^RUT", "^GSPC", "^DJI"]
+        tickers_to_exclude = ["^RUT", "^DJI"]
         df_filtered = df2[~df2["ticker"].isin(tickers_to_exclude)].copy()
 
         # Mapping tickers to their categories
@@ -79,7 +79,7 @@ def process_data(request):
         )
 
         # Drop rows where Health_Score is NaN
-        df_filtered = df_filtered.dropna(subset=["Health_Score"])
+        #df_filtered = df_filtered.dropna(subset=["Health_Score"])
 
         df_filtered["Aggregated_Score"] = df_filtered[["AI_Score", "Sentiment Score", "Health_Score"]].mean(axis=1)
 
