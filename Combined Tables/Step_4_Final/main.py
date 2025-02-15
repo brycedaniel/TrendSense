@@ -2,6 +2,7 @@ from google.cloud import bigquery
 import pandas as pd
 import functions_framework
 from flask import jsonify
+import logging
 
 # Initialize BigQuery client
 client = bigquery.Client()
@@ -10,11 +11,32 @@ client = bigquery.Client()
 SOURCE_TABLE = 'trendsense.combined_data.step_3_predictive_1'
 STOCK_HISTORY_TABLE = 'trendsense.stock_data.stock_data_history'
 TARGET_TABLE = 'trendsense.combined_data.step_4_final'
+REGRESSION_TABLE = 'trendsense.combined_data.step_4_test_train'
 
 @functions_framework.http
 def process_stock_data(request):
     try:
-        # Query BigQuery for data
+        logging.info("Starting data processing...")
+        
+        # First, get the regression coefficients
+        regression_query = f"""
+        SELECT *
+        FROM `{REGRESSION_TABLE}`
+        """
+        regression_df = client.query(regression_query).to_dataframe()
+        
+        # Create a dictionary of regression coefficients for quick lookup
+        regression_dict = {
+            row['Ticker']: {
+                'intercept': row['Intercept'],
+                'ai_coef': row['AI_Coefficient'],
+                'sentiment_coef': row['Sentiment_Coefficient'],
+                'health_coef': row['Health_Coefficient']
+            }
+            for _, row in regression_df.iterrows()
+        }
+
+        # Original query for stock data
         query = f"""
         WITH base_predictive AS (
           SELECT
@@ -67,8 +89,8 @@ def process_stock_data(request):
         ORDER BY
           date,
           ticker;
-                                        
-          """
+        """
+        
         # Execute query and load data into a DataFrame
         query_job = client.query(query)
         df = query_job.to_dataframe()
@@ -94,6 +116,23 @@ def process_stock_data(request):
             'Health_Score': 'Avg_Health_Score'
         })
 
+        # Calculate predicted next day percentage
+        def predict_next_day(row):
+            ticker_coef = regression_dict.get(row['ticker'])
+            if ticker_coef:
+                prediction = (
+                    ticker_coef['intercept'] +
+                    ticker_coef['ai_coef'] * row['Avg_AI_Score'] +
+                    ticker_coef['sentiment_coef'] * row['Avg_Sentiment_Score'] +
+                    ticker_coef['health_coef'] * row['Avg_Health_Score']
+                )
+                # Clip predictions to reasonable bounds
+                return max(min(prediction, 0.05), -0.05)
+            return None
+
+        df_grouped['Predicted_Next_Day_Pct'] = df_grouped.apply(predict_next_day, axis=1)
+
+        # Continue with existing calculations
         df_grouped['Avg_Daily_Percent_Difference'] = df_grouped['Avg_Daily_Percent_Difference'].fillna(0)
 
         df_grouped['Rolling_7day_Avg'] = df_grouped.groupby('ticker')['Avg_Aggregated_Score'].transform(
@@ -128,9 +167,18 @@ def process_stock_data(request):
             .rename(columns={0: 'Top_10_Today_Day_Avg'})
         )
 
+        # Add predicted top 10 average
+        daily_top_10_predicted = (
+            df_grouped.groupby('date')
+            .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Predicted_Next_Day_Pct'].mean())
+            .reset_index()
+            .rename(columns={0: 'Top_10_Predicted_Next_Day_Avg'})
+        )
+
         # Merge the daily averages back
         df_grouped = df_grouped.merge(daily_top_10_avg_next, on='date', how='left')
         df_grouped = df_grouped.merge(daily_top_10_avg_today, on='date', how='left')
+        df_grouped = df_grouped.merge(daily_top_10_predicted, on='date', how='left')
 
         # Calculate cumulative sums for 2025
         df_2025 = df_grouped[df_grouped['date'] >= '2025-01-01'].copy()
@@ -151,13 +199,23 @@ def process_stock_data(request):
             .rename(columns={'Top_10_Today_Day_Avg': 'Cumulative_Top_10_Today_Score'})
         )
 
+        daily_cumulative_predicted = (
+            df_2025.groupby('date')['Top_10_Predicted_Next_Day_Avg']
+            .mean()
+            .cumsum()
+            .reset_index()
+            .rename(columns={'Top_10_Predicted_Next_Day_Avg': 'Cumulative_Top_10_Predicted_Score'})
+        )
+
         # Merge cumulative sums
         df_grouped = df_grouped.merge(daily_cumulative_next, on='date', how='left')
         df_grouped = df_grouped.merge(daily_cumulative_today, on='date', how='left')
+        df_grouped = df_grouped.merge(daily_cumulative_predicted, on='date', how='left')
 
         # Fill missing cumulative scores
         df_grouped['Cumulative_Top_10_Score'].fillna(0, inplace=True)
         df_grouped['Cumulative_Top_10_Today_Score'].fillna(0, inplace=True)
+        df_grouped['Cumulative_Top_10_Predicted_Score'].fillna(0, inplace=True)
 
         # Final sort
         df_grouped = df_grouped.sort_values(['date'])
@@ -177,5 +235,6 @@ def process_stock_data(request):
         })
 
     except Exception as e:
+        logging.error(f"Error in processing: {str(e)}")
         return jsonify({"error": str(e)}), 500
 

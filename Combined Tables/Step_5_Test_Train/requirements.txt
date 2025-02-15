@@ -1,4 +1,8 @@
 google-cloud-bigquery
 pandas
 pyarrow
+scikit-learn
+functions-framework
+flask
+numpy
 db-dtypes
