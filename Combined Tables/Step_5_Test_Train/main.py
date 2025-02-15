@@ -1,29 +1,61 @@
 from google.cloud import bigquery
 import pandas as pd
+from sklearn.linear_model import LinearRegression
 
 def process_data(request):
     client = bigquery.Client()
 
     # Define source and target tables
     source_table = "trendsense.combined_data.step_4_final"
-    target_table = "trendsense.combined_data.step_4_test_train"
+    regression_table = "trendsense.combined_data.step_4_test_train"  # Storing regression results here
 
     # Load data from source table
     query = f"SELECT * FROM `{source_table}`"
-    df3 = client.query(query).to_dataframe()
+    df = client.query(query).to_dataframe()
 
-    # Remove rows where Avg_Aggregated_Score is NaN or 0
-    df3 = df3[df3["Avg_Aggregated_Score"].notna() & (df3["Avg_Aggregated_Score"] != 0)]
+    # Remove rows where any independent or dependent variable is NaN
+    df = df.dropna(subset=["Avg_AI_Score", "Avg_Sentiment_Score", "Avg_Health_Score", "Avg_Next_Daily_Percent_Difference"])
 
-    # Define schema based on the processed DataFrame
-    job_config = bigquery.LoadJobConfig(
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # Overwrite if table exists
-        autodetect=True,  # Automatically detect schema from DataFrame
-    )
+    # Filter out extreme Avg_Next_Daily_Percent_Difference values
+    df = df[(df["Avg_Next_Daily_Percent_Difference"] >= -0.05) & (df["Avg_Next_Daily_Percent_Difference"] <= 0.05)]
 
-    # Load the processed data to the target table
-    job = client.load_table_from_dataframe(df3, target_table, job_config=job_config)
-    job.result()  # Wait for the job to complete
+    # Initialize list to store regression results per ticker
+    regression_results = []
 
-    return f"Created {target_table} with {len(df3)} rows after removing NaN and zero Avg_Aggregated_Score values."
+    # Iterate over each unique ticker and train regression model
+    for ticker in df["ticker"].unique():
+        df_ticker = df[df["ticker"] == ticker].copy()
+
+        # Ensure enough data points for training
+        if len(df_ticker) > 3:  # Needs at least 4 data points to train
+            X = df_ticker[['Avg_AI_Score', 'Avg_Sentiment_Score', 'Avg_Health_Score']]
+            y = df_ticker['Avg_Next_Daily_Percent_Difference']
+
+            # Train regression model
+            model = LinearRegression()
+            model.fit(X, y)
+
+            # Store regression coefficients for future predictions
+            regression_results.append({
+                'Ticker': ticker,
+                'Intercept': model.intercept_,
+                'AI_Coefficient': model.coef_[0],
+                'Sentiment_Coefficient': model.coef_[1],
+                'Health_Coefficient': model.coef_[2],
+                'Data_Points': len(df_ticker)  # Track number of data points used
+            })
+        else:
+            print(f"⚠️ Skipping {ticker} (Not enough data points)")
+
+    # Convert regression results into a DataFrame
+    regression_df = pd.DataFrame(regression_results)
+
+    # Save regression results to BigQuery (Target table is now storing regression data)
+    if not regression_df.empty:
+        job_config = bigquery.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
+        client.load_table_from_dataframe(regression_df, regression_table, job_config=job_config).result()
+        print(f"✅ Regression coefficients saved to {regression_table}")
+
+    return f"Processing complete. Regression coefficients stored in {regression_table}."
+
 

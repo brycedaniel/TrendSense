@@ -1,3 +1,20 @@
+
+Week 4Date: 2/18/2025
+
+Progress:
+This week, I began the predictive modeling phase, testing various models to determine the best fit for accurate results. Initial evaluations suggest that a combination of machine learning techniques may be the most effective approach. I also fine-tuned data preprocessing steps to improve model performance. Additionally, I addressed cloud performance inefficiencies by optimizing function execution times and resource allocation.
+
+Problems:
+Client feedback is still pending, which has delayed certain model adjustments and validation steps. Additionally, some models require further tuning to balance accuracy and efficiency, particularly in handling large datasets.
+
+Plans:
+Next week, I will finalize model selection and begin testing on unseen data to evaluate performance. I’ll also start drafting the report outlining key findings, methodology, and insights. If client feedback is received, I will incorporate any necessary changes before finalizing the results. Additionally, I will begin integrating the predictive results into my dashboard, ensuring that key metrics and insights are easily accessible and visually interpretable.
+
+Hours:
+Approximately 15 hours this week
+
+
+
 Week 3
 
 Date: 2/11/2025
