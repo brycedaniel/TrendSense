@@ -1,6 +1,6 @@
 functions-framework
 pyarrow
-yfinance
+yfinance==0.2.54
 pandas
 google-cloud-bigquery
 requests

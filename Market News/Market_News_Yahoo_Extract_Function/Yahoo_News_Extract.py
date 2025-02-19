@@ -1,3 +1,20 @@
+# Yahoo Extract with BigQuery Upload This is not running in Google Function.  Need to automate locally
+
+"""
+Summary:
+This script is designed to scrape market news data from Yahoo Finance for a specific set of market indices and tech stocks. 
+The purpose is to analyze the sentiment of news headlines, categorize them as bullish, bearish, or neutral, 
+and store the processed data in a BigQuery table. This data will support trend analysis, market sentiment monitoring, 
+and data-driven decision-making for traders or analysts. The script is automated for local execution with the ability 
+to overwrite the BigQuery table to maintain the latest dataset.
+
+Why this approach:
+- **Yahoo Finance News API**: Provides timely and relevant market news data for indices and tech stocks.
+- **Sentiment Analysis**: Enables us to gauge market sentiment from news headlines using the `TextBlob` library.
+- **BigQuery Integration**: Ensures that data is stored in a scalable, queryable format for further analysis and visualization.
+- **Automation**: This script automates the process of fetching, processing, and uploading data for seamless updates.
+"""
+
 import os
 import pandas as pd
 import nltk
@@ -5,96 +22,72 @@ from datetime import datetime, timedelta
 from google.cloud import bigquery
 from textblob import TextBlob
 import yfinance as yf
-import time
-from typing import List, Dict
-import logging
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 
-def get_market_news(tickers: List[str], days_back: int = 30) -> pd.DataFrame:
+
+# Function to calculate sentiment polarity score for a given text
+def calculate_sentiment(text):
     """
-    Fetches news articles for the given tickers with robust error handling.
+    Uses TextBlob to calculate the sentiment polarity score of a given text.
+    Sentiment polarity ranges from -1 (negative) to +1 (positive).
+    """
+    try:
+        analysis = TextBlob(text)
+        return analysis.sentiment.polarity
+    except Exception as e:
+        print(f"[ERROR] Sentiment analysis failed: {e}")
+        return 0
+
+# Function to label sentiment based on the polarity score
+def label_sentiment(score):
+    """
+    Converts sentiment polarity scores into qualitative labels:
+    - Bullish (positive sentiment)
+    - Neutral (no strong sentiment)
+    - Bearish (negative sentiment)
+    """
+    if score > 0.35:
+        return "Bullish"
+    elif 0.15 < score <= 0.35:
+        return "Somewhat-Bullish"
+    elif -0.15 <= score <= 0.15:
+        return "Neutral"
+    elif -0.35 <= score < -0.15:
+        return "Somewhat-Bearish"
+    else:
+        return "Bearish"
+
+# Function to retrieve market news for specific tickers
+def get_market_news(tickers, days_back=5):
+    """
+    Fetches news articles for the given tickers from Yahoo Finance.
+    Filters news items based on the publication date (within the last `days_back` days).
+    Adds sentiment analysis and other metadata for each news item.
     """
     all_news = []
-    cutoff_date = datetime.now().date() - timedelta(days=days_back)
-    
+    today = datetime.now().date()
+    cutoff_date = today - timedelta(days=days_back)
+
     for ticker in tickers:
-        logging.info(f"Fetching news for {ticker}")
+        stock = yf.Ticker(ticker)
         try:
-            # Add delay between requests
-            time.sleep(2)
-            
-            # Create ticker object with timeout
-            stock = yf.Ticker(ticker)
-            
-            # Verify we can access the news attribute
-            if not hasattr(stock, 'news'):
-                logging.error(f"No news attribute found for {ticker}")
-                continue
-                
-            # Get news with timeout and validation
-            try:
-                news = stock.news
-                if not news:  # Check if news is empty
-                    logging.info(f"No news found for {ticker}")
-                    continue
-                    
-                if not isinstance(news, list):  # Validate news format
-                    logging.error(f"Invalid news format for {ticker}")
-                    continue
-                
-            except Exception as e:
-                logging.error(f"Error accessing news for {ticker}: {e}")
-                continue
-            
-            # Process each news item
+            news = stock.news  # Fetch news for the ticker
             for item in news:
                 try:
-                    # Validate news item
-                    if not isinstance(item, dict):
-                        continue
-                        
-                    publish_timestamp = item.get('providerPublishTime')
-                    if not publish_timestamp:
-                        continue
-                        
+                    publish_timestamp = item.get('providerPublishTime', 0)
                     publish_date = datetime.fromtimestamp(publish_timestamp).date()
-                    
-                    # Check if news is within date range
+
+                    # Only process news items published within the specified date range
                     if publish_date >= cutoff_date:
-                        title = item.get('title', '')
-                        if not title:  # Skip items without title
-                            continue
-                            
-                        # Calculate sentiment
-                        try:
-                            analysis = TextBlob(title)
-                            sentiment_score = analysis.sentiment.polarity
-                        except Exception as e:
-                            logging.warning(f"Sentiment analysis failed for {ticker}: {e}")
-                            sentiment_score = 0
-                            
-                        # Determine sentiment label
-                        if sentiment_score > 0.35:
-                            sentiment_label = "Bullish"
-                        elif 0.15 < sentiment_score <= 0.35:
-                            sentiment_label = "Somewhat-Bullish"
-                        elif -0.15 <= sentiment_score <= 0.15:
-                            sentiment_label = "Neutral"
-                        elif -0.35 <= sentiment_score < -0.15:
-                            sentiment_label = "Somewhat-Bearish"
-                        else:
-                            sentiment_label = "Bearish"
-                        
-                        # Create news item with validation
+                        title = item.get('title', '')  # News headline
+                        sentiment_score = calculate_sentiment(title)
+                        sentiment_label = label_sentiment(sentiment_score)
+
+                        # Compile metadata for the news item
                         news_item = {
                             'ticker': ticker,
                             'title': title,
-                            'summary': title,
+                            'summary': title,  # Duplicate title for simplicity
                             'publisher': item.get('publisher', ''),
                             'link': item.get('link', ''),
                             'publish_date': datetime.fromtimestamp(publish_timestamp),
@@ -102,104 +95,75 @@ def get_market_news(tickers: List[str], days_back: int = 30) -> pd.DataFrame:
                             'related_tickers': ', '.join(item.get('relatedTickers', [])),
                             'source': 'yahoo',
                             'overall_sentiment_score': sentiment_score,
-                            'overall_sentiment_label': sentiment_label
+                            'overall_sentiment_label': sentiment_label,
                         }
-                        
                         all_news.append(news_item)
-                        logging.info(f"Processed news item for {ticker}")
-                        
                 except Exception as e:
-                    logging.error(f"Error processing news item for {ticker}: {e}")
-                    continue
-                    
+                    print(f"[ERROR] Error processing news item for {ticker}: {e}")
         except Exception as e:
-            logging.error(f"Failed to process ticker {ticker}: {e}")
-            continue
-            
-        # Log progress
-        logging.info(f"Completed processing {ticker}")
-    
-    # Create DataFrame with validation
-    if not all_news:
-        logging.warning("No news items were collected")
-        return pd.DataFrame()
-        
-    try:
-        df = pd.DataFrame(all_news)
-        logging.info(f"Successfully created DataFrame with {len(df)} rows")
-        return df
-    except Exception as e:
-        logging.error(f"Failed to create DataFrame: {e}")
-        return pd.DataFrame()
+            print(f"[ERROR] Error retrieving news for {ticker}: {e}")
+    return pd.DataFrame(all_news)
 
-def upload_to_bigquery(df: pd.DataFrame, project_id: str, dataset_id: str, table_id: str) -> bool:
+# Function to upload processed data to BigQuery
+def upload_to_bigquery(df, project_id, dataset_id, table_id):
     """
-    Uploads DataFrame to BigQuery with enhanced error handling.
-    Returns True if successful, False otherwise.
+    Uploads a DataFrame to a specified BigQuery table.
+    Uses WRITE_TRUNCATE mode to overwrite existing data with the new upload.
     """
-    if df.empty:
-        logging.warning("No data to upload to BigQuery")
-        return False
-        
     try:
         client = bigquery.Client(project=project_id)
         table_ref = f"{project_id}.{dataset_id}.{table_id}"
-        
+
+        # Configure the load job to overwrite the table
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
         )
-        
-        # Upload with timeout
+
+        # Load data to BigQuery
         job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
-        job.result(timeout=300)  # 5-minute timeout
-        
-        logging.info(f"Successfully uploaded {len(df)} rows to {table_ref}")
-        return True
-        
-    except Exception as e:
-        logging.error(f"BigQuery upload failed: {e}")
-        return False
+        job.result()  # Wait for the job to complete
 
-def main():
+        print(f"[INFO] Data successfully uploaded to BigQuery table: {table_ref}")
+    except Exception as e:
+        print(f"[ERROR] Failed to upload data to BigQuery: {e}")
+
+# Main function to orchestrate fetching, processing, and uploading market news
+def fetch_and_save_market_news():
     """
-    Main function with better error handling and logging.
+    Main entry point for the script. Fetches news for market indices and tech stocks,
+    processes it with sentiment analysis, and uploads it to BigQuery.
     """
-    # Define indices and stocks
-    indices = ['^IXIC', '^GSPC']
+    # Define indices and tickers to fetch news for
+    indices = ['^IXIC', '^GSPC']  # Major market indices
+    market_news = get_market_news(tickers=indices)
+
     tech_stocks = [
-        'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT'  # Start with a smaller set for testing
+        'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
+        'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+        'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS',
+        'META', 'RGTI', 'QUBT', 'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
     ]
-    
-    try:
-        # Fetch news for indices
-        logging.info("Fetching news for market indices...")
-        market_news = get_market_news(tickers=indices)
-        
-        # Fetch news for tech stocks
-        logging.info("Fetching news for tech stocks...")
-        tech_news = get_market_news(tickers=tech_stocks)
-        
-        # Combine results
-        combined_news = pd.concat([market_news, tech_news], ignore_index=True)
-        
-        if not combined_news.empty:
-            success = upload_to_bigquery(
-                combined_news,
-                project_id="trendsense",
-                dataset_id="market_data",
-                table_id="News_Yahoo_Extract"
-            )
-            if success:
-                logging.info("Process completed successfully")
-            else:
-                logging.error("Failed to upload to BigQuery")
-        else:
-            logging.warning("No news data collected")
-            
-    except Exception as e:
-        logging.error(f"Process failed: {e}")
+    tech_news = get_market_news(tickers=tech_stocks)
 
+    # Combine market and tech news into a single DataFrame
+    combined_news = pd.concat([market_news, tech_news], ignore_index=True)
+
+    if not combined_news.empty:
+        # Upload combined data to BigQuery
+        upload_to_bigquery(
+            combined_news,
+            project_id="trendsense",
+            dataset_id="market_data",
+            table_id="News_Yahoo_Extract"
+        )
+    else:
+        print("[INFO] No news data to upload.")
+
+# Execute the script
 if __name__ == "__main__":
-    main()
+    fetch_and_save_market_news()
+
+
+
 
 

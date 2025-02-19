@@ -1,5 +1,5 @@
 pandas
-yfinance
+yfinance==0.2.54
 google-cloud-bigquery
 pyarrow
 pytz
