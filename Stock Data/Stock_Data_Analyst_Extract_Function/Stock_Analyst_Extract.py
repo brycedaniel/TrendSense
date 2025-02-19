@@ -1,30 +1,33 @@
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
-import os
 import json
 import requests
-from google.cloud import bigquery
-from typing import List
 import random
+import time
+from datetime import datetime
+from typing import List
+from google.cloud import bigquery
+from google.oauth2 import service_account
 
 # API Keys Configuration
 API_KEYS = [
     "1949b7a600msh1fcf25399699fcap11bf4fjsnd87cb8a26731",
     "ee72be2ef9msh532c4fc1a7b7941p1176e1jsn0328598b0245",  
     "bd8ce2e47emshd9b790e712f6f41p195cd7jsnc2d18a4e9d95"
- 
 ]
 
-# Constants for Google BigQuery
+# Define Stock Symbols
+STOCK_SYMBOLS = [
+    'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
+    'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
+    'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS',
+    'META', 'RGTI', 'QUBT', 'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
+]
+
+# BigQuery Configuration
 PROJECT_ID = "trendsense"
 DATASET_ID = "stock_data"
 TABLE_ID = "stock_analyst"
-STOCK_SYMBOLS = ['AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
-            'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
-            'AVGO', 'SMCI', 'GLW', 'HAL', 'LMT', 'AMZN', 'CRM', 'NOW', 'CHTR', 'TDS', 'META','RGTI','QUBT',
-            'LX', 'OKLO', 'PSIX', 'QFIN', 'RTX', 'TWLO'
-            ]
 
 class APIKeyManager:
     def __init__(self, api_keys: List[str]):
@@ -70,6 +73,7 @@ def fetch_latest_yahoo_recommendations(ticker: str, key_manager: APIKeyManager) 
         if response.status_code == 429:  # Rate limit exceeded
             print(f"Rate limit exceeded for key: {api_key}")
             key_manager.mark_key_failed(api_key)
+            time.sleep(1)  # Add delay before retry
             return fetch_latest_yahoo_recommendations(ticker, key_manager)  # Retry with next key
             
         if response.status_code != 200:
@@ -103,6 +107,7 @@ def get_stock_targets(symbols: List[str]) -> pd.DataFrame:
     
     for symbol in symbols:
         try:
+            print(f"Fetching data for {symbol}...")
             stock = yf.Ticker(symbol)
             info = stock.info
 
@@ -123,6 +128,7 @@ def get_stock_targets(symbols: List[str]) -> pd.DataFrame:
                 'Strong_Sell': strong_sell
             }
             all_stock_data.append(stock_data)
+            time.sleep(1)  # Add delay between requests
         except Exception as e:
             print(f"Error fetching data for {symbol}: {e}")
     
@@ -130,46 +136,33 @@ def get_stock_targets(symbols: List[str]) -> pd.DataFrame:
 
 def upload_to_bigquery(df: pd.DataFrame):
     """Upload the DataFrame to Google BigQuery."""
-    client = bigquery.Client()
-    table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
-
-    if "fetch_date" in df.columns:
-        df["fetch_date"] = pd.to_datetime(df["fetch_date"]).dt.date
-        
-    schema = [
-        bigquery.SchemaField("symbol", "STRING"),
-        bigquery.SchemaField("fetch_date", "DATE"),
-        bigquery.SchemaField("current_price", "FLOAT"),
-        bigquery.SchemaField("target_high_price", "FLOAT"),
-        bigquery.SchemaField("target_low_price", "FLOAT"),
-        bigquery.SchemaField("target_mean_price", "FLOAT"),
-        bigquery.SchemaField("target_median_price", "FLOAT"),
-        bigquery.SchemaField("Strong_Buy", "INTEGER"),
-        bigquery.SchemaField("Buy", "INTEGER"),
-        bigquery.SchemaField("Hold", "INTEGER"),
-        bigquery.SchemaField("Sell", "INTEGER"),
-        bigquery.SchemaField("Strong_Sell", "INTEGER"),
-    ]
-
     try:
-        try:
-            client.get_table(table_ref)
-        except:
-            table = bigquery.Table(table_ref, schema=schema)
-            client.create_table(table)
-            print(f"Created table {table_ref}")
+        # Load BigQuery credentials
+        key_path = "service-account-key.json"  # Ensure you have your service account JSON file
+        credentials = service_account.Credentials.from_service_account_file(
+            key_path,
+            scopes=["https://www.googleapis.com/auth/bigquery"]
+        )
 
-        job = client.load_table_from_dataframe(df, table_ref)
+        client = bigquery.Client(credentials=credentials, project=PROJECT_ID)
+        table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
+
+        # Ensure the date column is properly formatted
+        if "fetch_date" in df.columns:
+            df["fetch_date"] = pd.to_datetime(df["fetch_date"]).dt.date
+        
+        # Upload to BigQuery
+        job = client.load_table_from_dataframe(df, table_ref, job_config=bigquery.LoadJobConfig(write_disposition="WRITE_APPEND"))
         job.result()
-        print("Data uploaded to BigQuery successfully.")
+
+        print(f"Data uploaded to BigQuery: {table_ref}")
     except Exception as e:
         print(f"Error uploading data to BigQuery: {e}")
 
-def main(event=None, context=None):
-    """Cloud Function entry point."""
+def main():
+    """Main function to run locally."""
     try:
         print("Fetching stock data...")
-        # Shuffle the stock symbols to distribute load across different API keys
         shuffled_symbols = STOCK_SYMBOLS.copy()
         random.shuffle(shuffled_symbols)
         
@@ -178,14 +171,12 @@ def main(event=None, context=None):
         if not stock_data.empty:
             print("Uploading data to BigQuery...")
             upload_to_bigquery(stock_data)
-            return "Stock data successfully fetched and stored in BigQuery."
+            print("Process completed successfully.")
         else:
             print("No stock data retrieved.")
-            return "No stock data retrieved."
 
     except Exception as e:
         print(f"Error in main function: {e}")
-        return f"Error processing stock data: {e}"
 
 if __name__ == "__main__":
     main()
