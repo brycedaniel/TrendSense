@@ -1,16 +1,16 @@
 import yfinance as yf
 import pandas as pd
+import time
 from datetime import datetime
 import pytz
 from google.cloud import bigquery
-from google.oauth2 import service_account
 
 # BigQuery Configuration
 PROJECT_ID = "trendsense"
 DATASET_ID = "stock_data"
 TABLE_ID = "current_stock_data"
 
-# Define the list of stock tickers
+# Define stock tickers
 TICKERS = [
     'AAPL', 'GOOGL', 'MSFT', 'ASTS', 'PTON', 'GSAT', 'PLTR', 'SMR', 'ACHR',
     'BWXT', 'ARBK', 'AMD', 'NVDA', 'GME', 'MU', 'TSLA', 'NFLX', 'ZG',
@@ -26,43 +26,48 @@ def initialize_bigquery_client():
         print(f"Failed to initialize BigQuery client: {e}")
         return None
 
+def fetch_stock_data():
+    """Fetch stock data efficiently using yfinance batch requests."""
+    try:
+        print("Fetching stock data in batch...")
+        # Use yfinance's bulk request method
+        data = yf.download(TICKERS, period="5d", interval="1d", group_by="ticker", progress=False)
 
-def fetch_current_stock_data():
-    """Fetch current stock data and save to BigQuery."""
-    stock_data_list = []
+        mst = pytz.timezone('MST')
+        current_date = datetime.now(pytz.utc).astimezone(mst).strftime('%Y-%m-%d %H:%M:%S')
 
-    for ticker in TICKERS:
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info  # Fetch current stock information
-            previous_close = info.get("previousClose")
-            current_price = info.get("currentPrice")
-            
-            # Calculate percent difference if both values are available
-            if previous_close and current_price:
-                percent_difference = ((current_price - previous_close) / previous_close)
-            else:
-                percent_difference = None
+        stock_data_list = []
+        for ticker in TICKERS:
+            try:
+                if ticker in data and not data[ticker].empty:
+                    df = data[ticker]
 
-            # Convert to Mountain Standard Time (MST)
-            mst = pytz.timezone('MST')
-            current_data = {
-                "Date": datetime.now(pytz.utc).astimezone(mst).strftime('%Y-%m-%d %H:%M:%S'),
-                "Ticker": ticker,
-                "Current_Price": current_price,
-                "Open": info.get("open"),
-                "High": info.get("dayHigh"),
-                "Low": info.get("dayLow"),
-                "Volume": info.get("volume"),
-                "Market_Cap": info.get("marketCap"),
-                "Previous_Close": previous_close,
-                "Percent_Difference": percent_difference
-            }
-            stock_data_list.append(current_data)
-        except Exception as e:
-            print(f"Error fetching data for {ticker}: {e}")
+                    # Ensure there is at least one row of data
+                    if df.shape[0] > 0:
+                        last_close = df["Close"].iloc[-1] if "Close" in df else None
+                        prev_close = df["Close"].iloc[-2] if len(df) > 1 else None
+                        percent_diff = ((last_close - prev_close) / prev_close) if prev_close else None
 
-    return pd.DataFrame(stock_data_list)
+                        stock_data_list.append({
+                            "Date": current_date,
+                            "Ticker": ticker,
+                            "Current_Price": last_close,
+                            "Open": df["Open"].iloc[-1] if "Open" in df else None,
+                            "High": df["High"].iloc[-1] if "High" in df else None,
+                            "Low": df["Low"].iloc[-1] if "Low" in df else None,
+                            "Volume": df["Volume"].iloc[-1] if "Volume" in df else None,
+                            "Previous_Close": prev_close,
+                            "Percent_Difference": percent_diff
+                        })
+            except Exception as e:
+                print(f"Error processing data for {ticker}: {e}")
+                continue
+
+        return pd.DataFrame(stock_data_list)
+
+    except Exception as e:
+        print(f"Error fetching stock data: {e}")
+        return pd.DataFrame()
 
 def upload_to_bigquery(df: pd.DataFrame, client: bigquery.Client):
     """Upload the DataFrame to Google BigQuery."""
@@ -88,8 +93,8 @@ def main():
         print("Failed to initialize BigQuery client. Exiting...")
         return
 
-    print("Fetching current stock data...")
-    stock_data = fetch_current_stock_data()
+    print("Fetching stock data...")
+    stock_data = fetch_stock_data()
 
     if not stock_data.empty:
         print("Uploading data to BigQuery...")
@@ -100,3 +105,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
