@@ -1,3 +1,17 @@
+Week 5
+Date: 2/25/2025
+
+Progress:
+This week, I was able to complete all remaining code, with the exception of my Yahoo News extraction. Everything else is now successfully running in the cloud, ensuring smooth integration and automation across all components. The data pipeline is operating efficiently, and the predictive modeling workflow is fully functional. Cloud-based execution has significantly improved processing speed and reliability, reducing manual intervention.
+
+Problems:
+Despite the technical progress, I am still struggling to attract interested clients. Additionally, a portion of my code utilizing the OpenAI API intermittently stalls, likely due to network congestion or API rate limits. The current Google Cloud Function environment has a maximum timeout of 9 minutes, which may not be sufficient for certain processes. I may need to migrate to their new environment with extended execution limits to resolve this issue.
+
+Plans:
+I have started developing the dashboard and am pleased with its initial design and functionality. I will continue refining it to ensure it provides clear insights and actionable direction. The goal is to create a visually intuitive interface that highlights key trends and findings. I will also explore alternative solutions for my Yahoo News extraction issue and consider adjustments to mitigate the OpenAI API hangups.
+
+Hours Worked: 10 hours this week
+
 
 Week 4Date: 2/18/2025
 
