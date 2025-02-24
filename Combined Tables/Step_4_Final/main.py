@@ -97,8 +97,6 @@ ORDER BY
         df = df[df['date'] >= filter_date]
         df = df.sort_values(['ticker', 'date'])
       
-
-        
         # Additional filter for GSAT just in case
         df = df[df['ticker'] != 'GSAT']
 
@@ -142,6 +140,12 @@ ORDER BY
 
         df_grouped['Predicted_Price_Movement'] = df_grouped.apply(predict_next_day, axis=1)
 
+        # Add Predicted_Price_Movement_Yesterday - get previous day's prediction for each ticker
+        df_grouped['Predicted_Price_Movement_Yesterday'] = df_grouped.groupby('ticker')['Predicted_Price_Movement'].shift(1)
+        
+        # Fill NaN values with 0 for the first day
+        df_grouped['Predicted_Price_Movement_Yesterday'] = df_grouped['Predicted_Price_Movement_Yesterday'].fillna(0)
+
         # Continue with existing calculations
         df_grouped['Price_Movement_Today'] = df_grouped['Price_Movement_Today'].fillna(0)
         
@@ -169,43 +173,15 @@ ORDER BY
             ascending=False  # Higher scores get better ranks
         )
 
-     
-        # Calculate week-over-week change (last Friday vs previous Friday)
-        def calculate_friday_change(group):
-            # Get the last date in the data
-            last_date = group['date'].max()
-            
-            # Find the last Friday
-            days_to_friday = (last_date.dayofweek - 4) % 7
-            last_friday = last_date - pd.Timedelta(days=days_to_friday)
-            
-            # Find the previous Friday
-            prev_friday = last_friday - pd.Timedelta(weeks=1)
-            
-            # Get scores for these dates
-            last_friday_score = group[group['date'] == last_friday]['TS_Score'].iloc[0] if len(group[group['date'] == last_friday]) > 0 else None
-            prev_friday_score = group[group['date'] == prev_friday]['TS_Score'].iloc[0] if len(group[group['date'] == prev_friday]) > 0 else None
-            
-            if last_friday_score is not None and prev_friday_score is not None:
-                pct_change = ((last_friday_score - prev_friday_score) / prev_friday_score) * 100
-            else:
-                pct_change = 0
-                
-            # Apply the change to all rows
-            return pd.Series(pct_change, index=group.index)
-
-        # Calculate and rank the Friday-to-Friday change
-        df_grouped['TS_Friday_Change'] = df_grouped.groupby('ticker').apply(
-            calculate_friday_change
-        ).reset_index(level=0, drop=True)
-
-        df_grouped['TS_Rank_Friday_Change'] = df_grouped.groupby('date')['TS_Friday_Change'].rank(
+        # Calculate TS_Change (already defined in the original code)
+        df_grouped['TS_Change'] = df_grouped.groupby('ticker')['TS_Score'].pct_change() * 100
+        df_grouped['TS_Rank_Change'] = df_grouped.groupby('date')['TS_Change'].rank(
             method='min',
-            ascending=False  # Higher change gets better ranks (lower numbers)
+            ascending=False
         )
 
-        # Calculate 4-week composite score (average of both ranks)
-        df_grouped['Composite_Rank_4Week'] = (df_grouped['TS_Rank_4Week'] + df_grouped['TS_Rank_Friday_Change']) / 2
+        # Replace TS_Rank_Friday_Change with TS_Rank_Change in the Composite_Rank_4Week calculation
+        df_grouped['Composite_Rank_4Week'] = (df_grouped['TS_Rank_4Week'] + df_grouped['TS_Rank_Change']) / 2
         
         #####################################################
         # Get the most recent Composite_Rank_4Week for each ticker in each week
@@ -294,42 +270,68 @@ ORDER BY
             ascending=False
         )
 
-        df_grouped['TS_Change'] = df_grouped.groupby('ticker')['TS_Score'].pct_change() * 100
-        df_grouped['TS_Rank_Change'] = df_grouped.groupby('date')['TS_Change'].rank(
-            method='min',
-            ascending=False
-        )
-
+        # Composite_Rank (no change needed, already using TS_Rank_Change)
         df_grouped['Composite_Rank'] = (df_grouped['TS_Rank_7'] + df_grouped['TS_Rank_Change']) / 2
         
-        # Calculate daily top 10 averages with new column names
-       
-       
+        # Calculate daily top 10 averages using Predicted_Price_Movement_Yesterday
+        # Create a rank for Predicted_Price_Movement_Yesterday (higher values get better ranks)
+        df_grouped['Predicted_Yesterday_Rank'] = df_grouped.groupby('date')['Predicted_Price_Movement_Yesterday'].rank(
+            method='min',
+            ascending=False  # Higher predictions get better ranks
+        )
+        
+        # Using Predicted_Price_Movement_Yesterday to select top 10 tickers
         daily_top_10_avg_next = (
             df_grouped.groupby('date')
-            .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Price_Movement_Tomorrow'].mean())
+            .apply(lambda x: x.nsmallest(10, 'Predicted_Yesterday_Rank')['Price_Movement_Tomorrow'].mean())
             .reset_index()
             .rename(columns={0: 'Top_10_Composite_Price_Movement_Tomorrow'})
         )
+        
+        # Original using Composite_Rank (commented out)
+        # daily_top_10_avg_next = (
+        #     df_grouped.groupby('date')
+        #     .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Price_Movement_Tomorrow'].mean())
+        #     .reset_index()
+        #     .rename(columns={0: 'Top_10_Composite_Price_Movement_Tomorrow'})
+        # )
         
         # Fill NaN values with 0 for Top_10_Composite_Price_Movement_Tomorrow
         daily_top_10_avg_next['Top_10_Composite_Price_Movement_Tomorrow'] = (
             daily_top_10_avg_next['Top_10_Composite_Price_Movement_Tomorrow'].fillna(0)
         )
 
+        # Using Predicted_Price_Movement_Yesterday to select top 10 tickers
         daily_top_10_avg_today = (
             df_grouped.groupby('date')
-            .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Price_Movement_Today'].mean())
+            .apply(lambda x: x.nsmallest(10, 'Predicted_Yesterday_Rank')['Price_Movement_Today'].mean())
             .reset_index()
             .rename(columns={0: 'Top_10_Composite_Price_Movement_Today'})
         )
+        
+        # Original using Composite_Rank (commented out)
+        # daily_top_10_avg_today = (
+        #     df_grouped.groupby('date')
+        #     .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Price_Movement_Today'].mean())
+        #     .reset_index()
+        #     .rename(columns={0: 'Top_10_Composite_Price_Movement_Today'})
+        # )
 
+        # Using Predicted_Price_Movement_Yesterday to select top 10 tickers
         daily_top_10_predicted = (
             df_grouped.groupby('date')
-            .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Predicted_Price_Movement'].mean())
+            .apply(lambda x: x.nsmallest(10, 'Predicted_Yesterday_Rank')['Predicted_Price_Movement'].mean())
             .reset_index()
             .rename(columns={0: 'Top_10_Predicted_Price_Movement'})
         )
+        
+        # Original using Composite_Rank (commented out)
+        # daily_top_10_predicted = (
+        #     df_grouped.groupby('date')
+        #     .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Predicted_Price_Movement'].mean())
+        #     .reset_index()
+        #     .rename(columns={0: 'Top_10_Predicted_Price_Movement'})
+        # )
 
         # Merge the daily averages back
         df_grouped = df_grouped.merge(daily_top_10_avg_next, on='date', how='left')
@@ -372,6 +374,48 @@ ORDER BY
         df_grouped['Top_10_YTD_Cumulative_Tomorrow'].fillna(0, inplace=True)
         df_grouped['Top_10_YTD_Cumulative_Today'].fillna(0, inplace=True)
         df_grouped['Top_10_YTD_Cumulative_Predicted'].fillna(0, inplace=True)
+        
+        ###########################################
+        # Calculate daily average movement for all tickers (excluding ^GSPC and ^IXIC)
+        daily_all_tickers_avg = (
+            df_grouped[~df_grouped['ticker'].isin(['^GSPC', '^IXIC'])]
+            .groupby('date')['Price_Movement_Today']
+            .mean()
+            .reset_index()
+            .rename(columns={'Price_Movement_Today': 'All_Tickers_Daily_Avg'})
+        )
+
+        # Merge back to the main dataframe
+        df_grouped = df_grouped.merge(
+            daily_all_tickers_avg,
+            on='date',
+            how='left'
+        )
+
+        # Calculate cumulative sum starting from January 1, 2025
+        df_2025_all = df_grouped[df_grouped['date'] >= '2025-01-01'].copy()
+        daily_cumulative_all_tickers = (
+            df_2025_all.groupby('date')['All_Tickers_Daily_Avg']
+            .mean()
+            .cumsum()
+            .reset_index()
+            .rename(columns={'All_Tickers_Daily_Avg': 'TS_Cumulative_Averages'})
+        )
+
+        # Merge cumulative sum back to the main dataframe
+        df_grouped = df_grouped.merge(
+            daily_cumulative_all_tickers,
+            on='date',
+            how='left'
+        )
+
+        # Fill missing values with 0 for pre-2025 dates
+        df_grouped['TS_Cumulative_Averages'] = df_grouped.apply(
+            lambda row: row['TS_Cumulative_Averages'] if row['date'].year >= 2025 else 0,
+            axis=1
+        )
+        
+        ###########################################
 
         # Final sort
         df_grouped = df_grouped.sort_values(['date'])

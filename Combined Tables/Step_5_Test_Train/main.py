@@ -32,11 +32,11 @@ def process_data(request):
         query = f"""
         SELECT * 
         FROM `{source_table}`
-        WHERE Avg_AI_Score IS NOT NULL 
-          AND Avg_Sentiment_Score IS NOT NULL 
-          AND Avg_Health_Score IS NOT NULL 
-          AND Avg_Next_Daily_Percent_Difference IS NOT NULL
-          AND Avg_Next_Daily_Percent_Difference BETWEEN -0.05 AND 0.05
+        WHERE AI_Score IS NOT NULL 
+          AND Sentiment_Score IS NOT NULL 
+          AND Health_Score IS NOT NULL 
+          AND Price_Movement_Tomorrow IS NOT NULL
+          AND Price_Movement_Tomorrow BETWEEN -0.05 AND 0.05
         """
         
         logger.info("Executing BigQuery query...")
@@ -55,8 +55,8 @@ def process_data(request):
 
             # Ensure enough data points for training
             if len(df_ticker) > 3:
-                X = df_ticker[['Avg_AI_Score', 'Avg_Sentiment_Score', 'Avg_Health_Score']]
-                y = df_ticker['Avg_Next_Daily_Percent_Difference']
+                X = df_ticker[['AI_Score', 'Sentiment_Score', 'Health_Score']]
+                y = df_ticker['Price_Movement_Tomorrow']
 
                 # Train regression model
                 model = LinearRegression()
