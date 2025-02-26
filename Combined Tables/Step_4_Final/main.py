@@ -156,7 +156,7 @@ ORDER BY
             def last_4_week_avg(row):
                 last_4_weeks = group[
                     (group['Week_of_Year'] < row['Week_of_Year']) &  # Exclude current week
-                    (group['Week_of_Year'] >= row['Week_of_Year'] - 4)  # Include only last 4 weeks
+                    (group['Week_of_Year'] >= row['Week_of_Year'] - 1)  # Include only last 4 weeks
                 ]
                 return last_4_weeks['TS_Score'].mean() if not last_4_weeks.empty else None
 
@@ -181,7 +181,7 @@ ORDER BY
         )
 
         # Replace TS_Rank_Friday_Change with TS_Rank_Change in the Composite_Rank_4Week calculation
-        df_grouped['Composite_Rank_4Week'] = (df_grouped['TS_Rank_4Week'] + df_grouped['TS_Rank_Change']) / 2
+        df_grouped['Composite_Rank_4Week'] = (df_grouped['TS_Rank_4Week'] )
         
         #####################################################
         # Get the most recent Composite_Rank_4Week for each ticker in each week
