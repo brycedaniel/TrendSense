@@ -52,7 +52,7 @@ def process_stock_data(request):
 predictive_data AS (
   SELECT
     ticker,
-    DATE(date) as date,
+    DATE(date_utc) as date_utc,
     Stock_Category,
     Aggregated_Score,
     AI_Score,
@@ -63,7 +63,7 @@ predictive_data AS (
 )
 
 SELECT 
-  COALESCE(sh.Date, pd.date) as date,
+  COALESCE(sh.Date, pd.date_utc) as date_utc,
   COALESCE(sh.Ticker, pd.ticker) as ticker,
   COALESCE(pd.Stock_Category, 'Unknown') as Stock_Category,
   pd.Aggregated_Score,
@@ -76,15 +76,15 @@ SELECT
 FROM (
   SELECT * FROM stock_history 
   UNION ALL
-  SELECT DISTINCT ticker, date, NULL as Close, NULL as Percent_Difference, NULL as Next_Day_Percent 
+  SELECT DISTINCT ticker, date_utc, NULL as Close, NULL as Percent_Difference, NULL as Next_Day_Percent 
   FROM predictive_data 
-  WHERE date NOT IN (SELECT DISTINCT Date FROM stock_history)
+  WHERE date_utc NOT IN (SELECT DISTINCT Date FROM stock_history)
 ) sh
 FULL OUTER JOIN predictive_data pd
 ON LOWER(sh.Ticker) = LOWER(pd.ticker)
-AND sh.Date = pd.date
+AND sh.Date = pd.date_utc
 ORDER BY
-  COALESCE(sh.Date, pd.date),
+  COALESCE(sh.Date, pd.date_utc),
   COALESCE(sh.Ticker, pd.ticker)
         """
         
@@ -93,14 +93,14 @@ ORDER BY
         df = query_job.to_dataframe()
 
         filter_date = pd.to_datetime('2024-12-1')
-        df['date'] = pd.to_datetime(df['date'])
-        df = df[df['date'] >= filter_date]
-        df = df.sort_values(['ticker', 'date'])
+        df['date_utc'] = pd.to_datetime(df['date_utc'])
+        df = df[df['date_utc'] >= filter_date]
+        df = df.sort_values(['ticker', 'date_utc'])
       
         # Additional filter for GSAT just in case
         df = df[df['ticker'] != 'GSAT']
 
-        df_grouped = df.groupby(['ticker', 'date', 'Stock_Category']).agg({
+        df_grouped = df.groupby(['ticker', 'date_utc', 'Stock_Category']).agg({
             'Aggregated_Score': 'mean',
             'Close': 'last',
             'Avg_Daily_Percent_Difference': 'mean',
@@ -120,10 +120,10 @@ ORDER BY
             'Health_Score': 'Health_Score'
         })
         # Convert 'date' in df_grouped to datetime (now it exists)
-        df_grouped['date'] = pd.to_datetime(df_grouped['date'], errors='coerce')
+        df_grouped['date_utc'] = pd.to_datetime(df_grouped['date_utc'], errors='coerce')
 
         # Compute Week_of_Year with Saturday-Friday weeks
-        df_grouped['Week_of_Year'] = (df_grouped['date'] - pd.Timedelta(days=-2)).dt.isocalendar().week
+        df_grouped['Week_of_Year'] = (df_grouped['date_utc'] - pd.Timedelta(days=-2)).dt.isocalendar().week
         # Calculate predicted next day percentage
         def predict_next_day(row):
             ticker_coef = regression_dict.get(row['ticker'])
@@ -168,14 +168,14 @@ ORDER BY
         df_grouped = df_grouped.groupby('ticker', group_keys=False).apply(calculate_4week_avg)
 
         # Rank stocks based on the 4-week average (higher average = better rank)
-        df_grouped['TS_Rank_4Week'] = df_grouped.groupby('date')['TS_Score_4Week'].rank(
+        df_grouped['TS_Rank_4Week'] = df_grouped.groupby('date_utc')['TS_Score_4Week'].rank(
             method='min',
             ascending=False  # Higher scores get better ranks
         )
 
         # Calculate TS_Change (already defined in the original code)
         df_grouped['TS_Change'] = df_grouped.groupby('ticker')['TS_Score'].pct_change() * 100
-        df_grouped['TS_Rank_Change'] = df_grouped.groupby('date')['TS_Change'].rank(
+        df_grouped['TS_Rank_Change'] = df_grouped.groupby('date_utc')['TS_Change'].rank(
             method='min',
             ascending=False
         )
@@ -239,7 +239,7 @@ ORDER BY
 
         # Compute weekly cumulative sum for 2025 weeks based on average movement
         weekly_2025_returns = (
-            df_grouped[df_grouped['date'] >= '2025-01-01']
+            df_grouped[df_grouped['date_utc'] >= '2025-01-01']
             .groupby('Week_of_Year')['Weekly_Ticker_Avg_Movement']
             .first()
             .reset_index()
@@ -255,9 +255,9 @@ ORDER BY
             how='left'
         )
 
-        # Fill NaN values with 0 for pre-2025 dates
+        # Fill NaN values with 0 for pre-2025 date_utcs
         df_grouped['Weekly_Ticker_Cumulative'] = df_grouped.apply(
-            lambda row: row['Weekly_Ticker_Cumulative'] if row['date'].year >= 2025 else 0,
+            lambda row: row['Weekly_Ticker_Cumulative'] if row['date_utc'].year >= 2025 else 0,
             axis=1
         )
         ########################################################
@@ -265,7 +265,7 @@ ORDER BY
             lambda x: x.rolling(window=7, min_periods=1).mean()
         )
 
-        df_grouped['TS_Rank_7'] = df_grouped.groupby('date')['TS_Score_7'].rank(
+        df_grouped['TS_Rank_7'] = df_grouped.groupby('date_utc')['TS_Score_7'].rank(
             method='min',
             ascending=False
         )
@@ -275,14 +275,14 @@ ORDER BY
         
         # Calculate daily top 10 averages using Predicted_Price_Movement_Yesterday
         # Create a rank for Predicted_Price_Movement_Yesterday (higher values get better ranks)
-        df_grouped['Predicted_Yesterday_Rank'] = df_grouped.groupby('date')['Predicted_Price_Movement_Yesterday'].rank(
+        df_grouped['Predicted_Yesterday_Rank'] = df_grouped.groupby('date_utc')['Predicted_Price_Movement_Yesterday'].rank(
             method='min',
             ascending=False  # Higher predictions get better ranks
         )
         
         # Using Predicted_Price_Movement_Yesterday to select top 10 tickers
         daily_top_10_avg_next = (
-            df_grouped.groupby('date')
+            df_grouped.groupby('date_utc')
             .apply(lambda x: x.nsmallest(10, 'Predicted_Yesterday_Rank')['Price_Movement_Tomorrow'].mean())
             .reset_index()
             .rename(columns={0: 'Top_10_Composite_Price_Movement_Tomorrow'})
@@ -290,7 +290,7 @@ ORDER BY
         
         # Original using Composite_Rank (commented out)
         # daily_top_10_avg_next = (
-        #     df_grouped.groupby('date')
+        #     df_grouped.groupby('date_utc')
         #     .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Price_Movement_Tomorrow'].mean())
         #     .reset_index()
         #     .rename(columns={0: 'Top_10_Composite_Price_Movement_Tomorrow'})
@@ -303,7 +303,7 @@ ORDER BY
 
         # Using Predicted_Price_Movement_Yesterday to select top 10 tickers
         daily_top_10_avg_today = (
-            df_grouped.groupby('date')
+            df_grouped.groupby('date_utc')
             .apply(lambda x: x.nsmallest(10, 'Predicted_Yesterday_Rank')['Price_Movement_Today'].mean())
             .reset_index()
             .rename(columns={0: 'Top_10_Composite_Price_Movement_Today'})
@@ -311,7 +311,7 @@ ORDER BY
         
         # Original using Composite_Rank (commented out)
         # daily_top_10_avg_today = (
-        #     df_grouped.groupby('date')
+        #     df_grouped.groupby('date_utc')
         #     .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Price_Movement_Today'].mean())
         #     .reset_index()
         #     .rename(columns={0: 'Top_10_Composite_Price_Movement_Today'})
@@ -319,7 +319,7 @@ ORDER BY
 
         # Using Predicted_Price_Movement_Yesterday to select top 10 tickers
         daily_top_10_predicted = (
-            df_grouped.groupby('date')
+            df_grouped.groupby('date_utc')
             .apply(lambda x: x.nsmallest(10, 'Predicted_Yesterday_Rank')['Predicted_Price_Movement'].mean())
             .reset_index()
             .rename(columns={0: 'Top_10_Predicted_Price_Movement'})
@@ -327,22 +327,22 @@ ORDER BY
         
         # Original using Composite_Rank (commented out)
         # daily_top_10_predicted = (
-        #     df_grouped.groupby('date')
+        #     df_grouped.groupby('date_utc')
         #     .apply(lambda x: x.nsmallest(10, 'Composite_Rank')['Predicted_Price_Movement'].mean())
         #     .reset_index()
         #     .rename(columns={0: 'Top_10_Predicted_Price_Movement'})
         # )
 
         # Merge the daily averages back
-        df_grouped = df_grouped.merge(daily_top_10_avg_next, on='date', how='left')
-        df_grouped = df_grouped.merge(daily_top_10_avg_today, on='date', how='left')
-        df_grouped = df_grouped.merge(daily_top_10_predicted, on='date', how='left')
+        df_grouped = df_grouped.merge(daily_top_10_avg_next, on='date_utc', how='left')
+        df_grouped = df_grouped.merge(daily_top_10_avg_today, on='date_utc', how='left')
+        df_grouped = df_grouped.merge(daily_top_10_predicted, on='date_utc', how='left')
 
         # Calculate cumulative sums for 2025
-        df_2025 = df_grouped[df_grouped['date'] >= '2025-01-01'].copy()
+        df_2025 = df_grouped[df_grouped['date_utc'] >= '2025-01-01'].copy()
 
         daily_cumulative_next = (
-            df_2025.groupby('date')['Top_10_Composite_Price_Movement_Tomorrow']
+            df_2025.groupby('date_utc')['Top_10_Composite_Price_Movement_Tomorrow']
             .mean()
             .cumsum()
             .reset_index()
@@ -350,7 +350,7 @@ ORDER BY
         )
 
         daily_cumulative_today = (
-            df_2025.groupby('date')['Top_10_Composite_Price_Movement_Today']
+            df_2025.groupby('date_utc')['Top_10_Composite_Price_Movement_Today']
             .mean()
             .cumsum()
             .reset_index()
@@ -358,7 +358,7 @@ ORDER BY
         )
 
         daily_cumulative_predicted = (
-            df_2025.groupby('date')['Top_10_Predicted_Price_Movement']
+            df_2025.groupby('date_utc')['Top_10_Predicted_Price_Movement']
             .mean()
             .cumsum()
             .reset_index()
@@ -366,9 +366,9 @@ ORDER BY
         )
 
         # Merge cumulative sums
-        df_grouped = df_grouped.merge(daily_cumulative_next, on='date', how='left')
-        df_grouped = df_grouped.merge(daily_cumulative_today, on='date', how='left')
-        df_grouped = df_grouped.merge(daily_cumulative_predicted, on='date', how='left')
+        df_grouped = df_grouped.merge(daily_cumulative_next, on='date_utc', how='left')
+        df_grouped = df_grouped.merge(daily_cumulative_today, on='date_utc', how='left')
+        df_grouped = df_grouped.merge(daily_cumulative_predicted, on='date_utc', how='left')
 
         # Fill missing cumulative scores
         df_grouped['Top_10_YTD_Cumulative_Tomorrow'].fillna(0, inplace=True)
@@ -379,7 +379,7 @@ ORDER BY
         # Calculate daily average movement for all tickers (excluding ^GSPC and ^IXIC)
         daily_all_tickers_avg = (
             df_grouped[~df_grouped['ticker'].isin(['^GSPC', '^IXIC'])]
-            .groupby('date')['Price_Movement_Today']
+            .groupby('date_utc')['Price_Movement_Today']
             .mean()
             .reset_index()
             .rename(columns={'Price_Movement_Today': 'All_Tickers_Daily_Avg'})
@@ -388,14 +388,14 @@ ORDER BY
         # Merge back to the main dataframe
         df_grouped = df_grouped.merge(
             daily_all_tickers_avg,
-            on='date',
+            on='date_utc',
             how='left'
         )
 
         # Calculate cumulative sum starting from January 1, 2025
-        df_2025_all = df_grouped[df_grouped['date'] >= '2025-01-01'].copy()
+        df_2025_all = df_grouped[df_grouped['date_utc'] >= '2025-01-01'].copy()
         daily_cumulative_all_tickers = (
-            df_2025_all.groupby('date')['All_Tickers_Daily_Avg']
+            df_2025_all.groupby('date_utc')['All_Tickers_Daily_Avg']
             .mean()
             .cumsum()
             .reset_index()
@@ -405,20 +405,20 @@ ORDER BY
         # Merge cumulative sum back to the main dataframe
         df_grouped = df_grouped.merge(
             daily_cumulative_all_tickers,
-            on='date',
+            on='date_utc',
             how='left'
         )
 
-        # Fill missing values with 0 for pre-2025 dates
+        # Fill missing values with 0 for pre-2025 date_utcs
         df_grouped['TS_Cumulative_Averages'] = df_grouped.apply(
-            lambda row: row['TS_Cumulative_Averages'] if row['date'].year >= 2025 else 0,
+            lambda row: row['TS_Cumulative_Averages'] if row['date_utc'].year >= 2025 else 0,
             axis=1
         )
         
         ###########################################
 
         # Final sort
-        df_grouped = df_grouped.sort_values(['date'])
+        df_grouped = df_grouped.sort_values(['date_utc'])
 
         # Save to BigQuery (overwrite existing table)
         job_config = bigquery.LoadJobConfig(

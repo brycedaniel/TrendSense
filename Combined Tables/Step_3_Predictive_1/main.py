@@ -54,6 +54,11 @@ def process_data(request):
         df2['publish_date'] = pd.to_datetime(df2['publish_date'])
         df2['date'] = pd.to_datetime(df2['publish_date']).dt.date
 
+        # Convert publish_date to UTC (assuming MST is UTC-7)
+        df2['publish_date_utc'] = df2['publish_date'] + pd.Timedelta(hours=7)
+        # Extract just the date from publish_date_utc
+        df2['date_utc'] = df2['publish_date_utc'].dt.date
+
         # Get all unique dates in the dataset
         min_date = df2['date'].min()
         max_date = df2['date'].max()
@@ -134,7 +139,7 @@ def process_data(request):
 
         # Select final columns
         df_final = df_merged[[
-            "Unique_ID", "publish_date", "date", "ticker", "Stock_Category", "AI_Score", 
+            "Unique_ID", "publish_date", "publish_date_utc", "date_utc", "date", "ticker", "Stock_Category", "AI_Score", 
             "Daily_Avg_AI_Score", "Sentiment Score", "Health_Score", "Aggregated_Score",
             "Relative_1HR_Chg", "Open_1HR_Change", "Daily_Percent_Difference",
             "Next_Daily_Percent_Difference"
@@ -145,6 +150,8 @@ def process_data(request):
             schema = [
                 bigquery.SchemaField("Unique_ID", "STRING"),
                 bigquery.SchemaField("publish_date", "TIMESTAMP"),
+                bigquery.SchemaField("publish_date_utc", "TIMESTAMP"),
+                bigquery.SchemaField("date_utc", "DATE"), 
                 bigquery.SchemaField("date", "DATE"),
                 bigquery.SchemaField("ticker", "STRING"),
                 bigquery.SchemaField("Stock_Category", "STRING"),
