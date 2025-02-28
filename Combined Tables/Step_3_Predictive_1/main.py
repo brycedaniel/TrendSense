@@ -49,42 +49,57 @@ def process_data(request):
             'NOW': 'Software', 'TWLO': 'Software',
             '^IXIC': 'Index', '^GSPC': 'Index'
         }
-
-        # Convert publish_date to datetime and ensure date is date type
-        df2['publish_date'] = pd.to_datetime(df2['publish_date'])
+        
+        # Convert publish_date to datetime (explicitly timezone naive)
+        df2['publish_date'] = pd.to_datetime(df2['publish_date'], errors='coerce', utc=True).dt.tz_localize(None)
         df2['date'] = pd.to_datetime(df2['publish_date']).dt.date
-
-        # Convert publish_date to UTC (assuming MST is UTC-7)
-        df2['publish_date_utc'] = df2['publish_date'] + pd.Timedelta(hours=7)
-        # Extract just the date from publish_date_utc
-        df2['date_utc'] = df2['publish_date_utc'].dt.date
-
+        
+        # Apply the UTC time shift to existing data (still timezone naive)
+        df2['publish_date_utc'] = df2['publish_date'].apply(
+            lambda x: x + pd.Timedelta(hours=7) if pd.notna(x) else None
+        )
+        
+        # Get date_utc from publish_date_utc for existing data
+        df2['date_utc'] = df2['publish_date_utc'].apply(
+            lambda x: x.date() if pd.notna(x) else None
+        )
+        
         # Get all unique dates in the dataset
         min_date = df2['date'].min()
         max_date = df2['date'].max()
-        all_dates = pd.date_range(start=min_date, end=max_date, freq='D').date
+        all_dates = pd.date_range(start=min_date, end=max_date, freq='D')
         
         # Create a complete date-ticker grid
         full_df = pd.DataFrame([(date, ticker) for date in all_dates for ticker in all_tickers],
                              columns=['date', 'ticker'])
         
-        # Convert date columns to the same type for merging
-        full_df['date'] = pd.to_datetime(full_df['date'])
-        df2['date'] = pd.to_datetime(df2['date'])
-        
-        # Add publish_date to full_df (same as date for new records)
-        full_df['publish_date'] = full_df['date']
+        # Make sure dates are datetime for merging
+        full_df['date'] = pd.to_datetime(full_df['date']).dt.tz_localize(None)
+        df2['date'] = pd.to_datetime(df2['date']).dt.tz_localize(None)
         
         # Merge with original data
         df_merged = pd.merge(full_df, df2, 
                            how='left', 
                            on=['date', 'ticker'])
         
-        # Use publish_date_y if available, otherwise use publish_date_x
-        if 'publish_date_y' in df_merged.columns:
-            df_merged['publish_date'] = df_merged['publish_date_y'].fillna(df_merged['publish_date_x'])
-            df_merged = df_merged.drop(['publish_date_x', 'publish_date_y'], axis=1)
-
+        # Create publish_date for new records with timestamp at midnight
+        df_merged['publish_date'] = df_merged.apply(
+            lambda row: row['publish_date'] if pd.notna(row['publish_date']) 
+            else pd.Timestamp(row['date'].date()),  # Use date from the merge
+            axis=1
+        )
+        
+        # Ensure publish_date is a consistent datetime type (timezone naive)
+        df_merged['publish_date'] = pd.to_datetime(df_merged['publish_date'], utc=True).dt.tz_localize(None)
+        
+        # Calculate publish_date_utc for ALL records
+        df_merged['publish_date_utc'] = df_merged['publish_date'] + pd.Timedelta(hours=7)
+        
+        # Get date_utc from publish_date_utc
+        df_merged['date_utc'] = df_merged['publish_date_utc'].apply(
+            lambda x: x.date() if pd.notna(x) else None
+        )
+        
         # Generate Unique_ID for new rows
         df_merged['Unique_ID'] = df_merged['Unique_ID'].fillna(
             df_merged.apply(lambda x: f"{x['ticker']}_{x['date'].strftime('%Y%m%d')}_{hash(str(datetime.now()))}", axis=1)
@@ -136,6 +151,11 @@ def process_data(request):
                 "Forward_60min_Change": "Open_1HR_Change"
             }, inplace=True
         )
+
+        # For debugging, print a sample of records to see if publish_date_utc is populated
+        print("Sample of df_merged:")
+        print(df_merged[['date', 'ticker', 'publish_date', 'publish_date_utc']].head(10))
+        print("NaN values in publish_date_utc:", df_merged['publish_date_utc'].isna().sum())
 
         # Select final columns
         df_final = df_merged[[
