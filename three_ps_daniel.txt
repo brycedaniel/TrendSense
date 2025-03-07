@@ -1,3 +1,18 @@
+Week 7
+Date: 3/11/2025
+
+Progress:
+This week, I primarily focused on completing my dashboard, which is now fully finished. One of the biggest achievements was optimizing the processing power and memory, allowing me to reduce costs to just 1/10th of what they were last week. The system is running efficiently, and I’m satisfied with the overall performance.
+
+Problems:
+The only issue I’m currently facing is the gap between the end-of-day data and the next day’s data population. Data is not available until at least one article is published for the next day, which can take up to an hour. However, at this point, I’m okay with this delay and don’t see it as a major problem.
+
+Plans:
+Moving forward, I will begin working on the deliverables and transitioning the platform from Google Cloud to a personal server. This migration will help further control costs while maintaining performance.
+
+Hours Worked: 8 hours this week
+
+
 
 Week 6
 Date: 3/4/2025
