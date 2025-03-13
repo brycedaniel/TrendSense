@@ -1,84 +1,142 @@
-# TrendSense
+# **TrendSense**
+## Stock Market Predictor Using AI, Financial Metrics, and Market News  
 
-Stock Market Sentiment Analyzer for Predicting Market Trends
+---
 
-# Capstone Project Proposal: High-Yield Stock Predictor – Analyzing Market Sentiment for Stock Value Prediction
+## **Capstone Project: High-Yield Stock Predictor**  
 
-## Problem Statement
+### **Overview**  
+TrendSense is a **stock prediction system** that integrates **financial metrics, analyst recommendations, and market sentiment** to forecast stock movements and long-term trends. Using **machine learning, regression analysis, and AI-driven sentiment analysis**, the system provides insights into stock price fluctuations.  
 
-This project aims to explore the impact of market sentiment on stock prices. By analyzing both qualitative (market sentiment) and quantitative (10-K filings) data, the project seeks to predict stock value changes based on a variety of indicators, focusing on how sentiment influences stock performance.
+This project leverages **multiple data sources, automated data collection, predictive modeling, and interactive dashboards** to help investors make data-driven decisions.  
 
-## Data Sources
+---
 
-### Market Sentiment Data Sources
+## **Problem Statement**  
+Stock prices are influenced by a vast number of factors, including **financial reports, market sentiment, macroeconomic indicators, and news events**. Investors often struggle to synthesize all of this information into a coherent investment strategy.  
 
-1. **Reuters**: Known for reliable financial and business news with factual reporting, essential for unbiased sentiment analysis.
-2. **Bloomberg**: Offers timely news on individual stocks and market trends, though some content requires a subscription.
-3. **Yahoo Finance**: Provides stock-specific news, earnings reports, and sentiment indicators by ticker symbol, which can be scraped for stock-specific insights.
-4. **MarketWatch**: Features extensive stock, investing, and market sentiment coverage, useful for detailed sentiment insights.
-5. **Seeking Alpha**: A platform with analyst opinions and investment strategies, allowing sentiment-rich commentary (note that some features may require a subscription).
-6. **Financial Times (FT)**: Offers global financial reporting, ideal for a comprehensive perspective on market sentiment.
-7. **CNBC**: Provides real-time financial market news, expert insights, and daily summaries, which can enhance understanding of short-term sentiment shifts.
+TrendSense solves this problem by:  
+- **Predicting next-day price movements** using multiple regression models.  
+- **Aggregating key financial and sentiment indicators** into a **proprietary TS Score** to assess long-term trends.  
+- **Providing interactive dashboards** for data visualization and stock analysis.  
 
-### 10-K Filing Data Sources
+By offering a structured approach to **market analysis and stock forecasting**, TrendSense empowers investors to make more **informed and confident decisions**.  
 
-1. **EDGAR (SEC Database)**: The SEC’s free EDGAR database provides access to public companies' filings, including 10-K and 10-Q reports, and is a comprehensive resource for structured financial data.
-   - Website: [https://www.sec.gov/edgar.shtml](https://www.sec.gov/edgar.shtml)
-2. **Seeking Alpha**: In addition to news, it offers 10-K filings and analyst commentary, adding qualitative context.
-3. **Yahoo Finance**: Includes SEC filing links under company profiles, generally under “Financials” or “Analysis” tabs.
-4. **Morningstar**: Provides access to 10-Ks along with analytical tools and ratings (some features may require a subscription).
-5. **BamSEC**: Specializes in SEC filings, with enhanced navigation and key section highlights; basic access is free.
-6. **MarketWatch**: Also provides 10-K access, alongside news and analytical insights within company profiles.
+---
 
-## Approach
+## **Data Sources**  
 
-### Stock Price Data Collection
+### **Stock Market & Financial Data**  
+- **Yahoo Finance API** – Stock prices, financial statements, and analyst ratings.  
+- **Alpha Vantage API** – Real-time and historical stock data.  
+- **Seeking Alpha** – Analyst opinions and investment sentiment.  
+- **RapidAPI** – Supplementary stock market data sources.  
 
-To align sentiment analysis and 10-K data with stock price changes, stock data will be collected from reliable sources:
+### **Market Sentiment Data**  
+- **News API** – Aggregated financial news from multiple publishers.  
+- **Reuters** – Reliable financial and business reporting.  
+- **Bloomberg** – Stock-specific news and earnings insights.  
+- **CNBC** – Market trend analysis and expert commentary.  
+- **MarketWatch** – Financial data and market sentiment coverage.  
 
-1. **Yahoo Finance API (yfinance)**: A Python library to access historical stock prices.
-2. **Alpha Vantage API**: Provides daily and intraday stock data (free tier available).
-3. **Polygon.io API**: Offers real-time and historical stock data, suitable for high-frequency updates.
-4. **Yahoo Finance (Web Scraping)**: If API restrictions limit data access, web scraping can be performed using BeautifulSoup and requests libraries (with caution to avoid frequent access issues).
+### **Data Collection & Processing**  
+- **Data Extraction**: API calls & web scraping (BeautifulSoup, requests).  
+- **Data Preprocessing**: Cleaning, structuring, and sentiment analysis using NLP techniques.  
+- **Storage**: Google BigQuery (cloud database for structured data).  
+- **Automation**: Google Cloud Functions & Google Scheduler for periodic updates.  
 
-## Project Outline
+---
 
-1. **Data Collection**
+## **Feature Engineering & Model Development**  
 
-   - **Market Sentiment**: Web scraping tools like BeautifulSoup or Scrapy will be used to gather sentiment data from chosen news sites. Selenium may be used if interaction with dynamic content is needed.
-   - **10-K Filings**: The SEC’s EDGAR API will streamline access to financial reports, with content filtering for sections rich in sentiment (e.g., “Risk Factors,” “Management Discussion”).
+### **Data Integration & Processing**  
+- **SQL joins** merge financial and sentiment datasets.  
+- **Feature normalization** ensures consistent scaling across all variables.  
+- **Natural Language Processing (NLP)** for sentiment scoring using **VADER, TextBlob, and AI-driven models**.  
 
-2. **Preprocessing**
+### **Predictive Modeling**  
+- **Multiple Regression Model**: Predicts next-day price movements using financial metrics and sentiment scores.  
+- **TS Score (TrendSense Score)**: Aggregates **AI sentiment, analyst ratings, and financial health metrics** into a single ranking system for long-term stock recommendations.  
 
-   - **Text Processing**: Libraries like NLTK and spaCy will be used for tokenization, stopword removal, and standard text preprocessing steps.
-   - **Section Extraction**: Important sections of 10-K filings will be extracted using regular expressions (re) for focus on sentiment-rich content.
-   - **Numerical Data Parsing**: Specific financial data, such as revenue and debt, will be extracted for structured feature generation.
+### **Core Features of TrendSense Dataset**  
 
-3. **Sentiment Analysis**
+| Column Name | Description |
+|-------------|------------|
+| **Ticker** | The ticker symbol of a tracked stock (e.g., AAPL, TSLA). |
+| **Date** | Date of the data collection. |
+| **Stock_Category** | Industry classification (e.g., AI, Semiconductor, Energy). |
+| **TS_Score** | Aggregate score combining AI Sentiment, Analyst Ratings, and Financial Health. |
+| **Close Price** | The stock’s closing price for the day. |
+| **Price_Movement_Today** | Percentage change in the stock price from the previous day. |
+| **Predicted_Price_Movement** | Next-day stock price movement forecasted by regression models. |
+| **AI_Score** | AI-driven sentiment score (-10 to 10). |
+| **Sentiment_Score** | Weighted sentiment score from financial news analysis. |
+| **Health_Score** | Score based on financial fundamentals and analyst opinions. |
+| **TS_Score_4Week** | Rolling 4-week average of TS Score for long-term analysis. |
+| **TS_Rank_4Week** | Ranking based on TS Score, where lower ranks indicate better stocks. |
+| **Composite_Rank** | A weighted ranking combining short-term and long-term TS trends. |
+| **Top 10 Predictions** | Identifies the 10 best-performing stocks based on TS Score and predicted movement. |
 
-   - **Basic Sentiment Models**: Use VADER and TextBlob for initial sentiment scoring.
-   - **Advanced NLP Models**: Hugging Face transformers library with FinBERT or BERT models will provide nuanced sentiment and topic analysis on financial text.
+---
 
-4. **Feature Engineering**
+## **System Architecture & Deployment**  
 
-   - **TF-IDF and Word Embeddings**: Utilize scikit-learn’s TF-IDF and Word2Vec from Gensim for turning text into features.
-   - **BERT Embeddings**: Capture sentence-level semantics with BERT embeddings from transformers.
-   - **Structured Data Extraction**: Financial details from 10-Ks (like profit and revenue) will be integrated into feature sets.
+### **Data Pipeline & Automation**  
+1. **Data Extraction**:  
+   - APIs retrieve stock, financial, and news sentiment data.  
+   - Web scraping (BeautifulSoup) supplements missing data points.  
+2. **Data Storage & Processing**:  
+   - Raw data is **stored in Google BigQuery**.  
+   - Automated **SQL joins** and Python scripts clean and transform data.  
+3. **Predictive Model Execution**:  
+   - Google Cloud Functions run **regression models and sentiment analysis**.  
+4. **Dashboard Integration**:  
+   - **Power BI Dashboards** display **real-time stock analysis & predictions**.  
+5. **Scheduled Updates**:  
+   - **Google Scheduler automates data refreshes**, ensuring up-to-date insights.  
 
-5. **Model Selection**
+---
 
-   - **Traditional ML Models**: Random Forest and Gradient Boosting models in scikit-learn or XGBoost for initial predictions.
-   - **Neural Networks**: For handling large datasets, LSTM and Transformer models using TensorFlow or PyTorch to capture long-term dependencies in financial narratives.
+## **Analysis & Insights**  
 
-6. **Model Training and Evaluation**
+### **Visualization Dashboards**  
+The **TrendSense Dashboard** provides key insights on stock trends, predictions, and rankings.  
 
-   - **Train-Test Split**: Split data into training and test sets, and use scikit-learn or TensorFlow for model training.
-   - **Performance Metrics**: Evaluate model performance with Mean Squared Error (MSE) for regression accuracy or classification accuracy for sentiment outcomes.
+- **Stock Performance Tracker**: Displays historical and predicted stock movements.  
+- **TS Score Heatmap**: Highlights top-performing stocks by long-term ranking.  
+- **Sector-Wide Comparisons**: Analyzes stock categories (AI, Semiconductors, Energy, etc.).  
+- **Sentiment & Price Movement Correlation**: Measures the influence of news sentiment on stock trends.  
 
-7. **Deployment**
-   - **API Development**: Use FastAPI to create a REST API for real-time analysis.
-   - **Interactive Dashboard**: Streamlit will provide a visual dashboard for predictions and insights, allowing users to interact with sentiment and stock data in real-time.
+### **Stock Ranking System**  
+- **Short-Term Predictions**: Uses regression models to forecast **next-day price movement**.  
+- **Long-Term Investment Picks**: The **TS Score aggregates sentiment & financial indicators** to rank stocks over time.  
 
-## Conclusion
+---
 
-This capstone project aims to deliver a predictive model that leverages both market sentiment and fundamental data to forecast stock performance. By combining advanced NLP techniques with traditional and deep learning models, this project will provide insights into the correlation between sentiment and stock price trends, offering valuable insights for investors and financial analysts.
+## **Limitations & Challenges**  
+
+### **Cost Constraints**  
+- **API Costs**: Some **real-time data sources require expensive API subscriptions**.  
+- **Cloud Processing & Storage Costs**: Running **Google BigQuery queries at scale** adds costs.  
+- **AI Model Processing**: NLP-based sentiment analysis requires **high computational resources**.  
+
+### **Predictive Accuracy Constraints**  
+- **Market Complexity**: **Stock prices are influenced by factors outside the model’s scope**, such as geopolitical events.  
+- **Model Limitations**: TrendSense currently captures **~15% of stock price movements**, leaving room for improvement.  
+
+---
+
+## **Future Enhancements**  
+- **Deep Learning Models**: Experiment with **LSTM & Transformers** for better trend forecasting.  
+- **Expanded Data Sources**: Integrate **real-time trading volume & economic indicators**.  
+- **Improved Sentiment Analysis**: Use **topic modeling** to identify key themes in financial news.  
+- **Mobile & Web Application**: Develop an intuitive UI for traders to access **TrendSense insights on the go**.  
+
+---
+
+## **Conclusion**  
+TrendSense is an **AI-powered stock prediction tool** that combines **financial fundamentals, market sentiment, and regression modeling** to generate **data-driven investment insights**.  
+
+While **not a definitive predictor**, it serves as an **invaluable resource for understanding market trends** and identifying high-performing stocks based on **quantitative and qualitative factors**.  
+
+By continuing to refine its models and expand its data sources, TrendSense aims to become a **leading tool for stock market forecasting** and **investment decision-making**.  
