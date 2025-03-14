@@ -1,3 +1,17 @@
+Week 8
+Date: 3/18/2025
+
+Progress:
+This week, I focused on drafting the written portion of my assignment, outlining the key topics relevant to this project. Additionally, I started integrating the digital product into my website, ensuring it aligns with the overall project structure. My work on the dashboard from last week has continued to pay off, as the system remains optimized and cost-efficient.
+
+Problems:
+I’m still encountering a delay between market close and the next available news article. I haven’t identified a workaround yet, but I’m considering potential solutions, such as alternative data sources or predictive modeling to bridge the gap.
+
+Plans:
+My goal is to complete a rough draft of the written report by Thursday next week. After that, I will shift focus to finalizing the digital product. I also plan to explore different hosting solutions to determine whether transitioning to a personal server remains the best option for long-term sustainability.
+
+Hours Worked: 6 hours this week
+
 Week 7
 Date: 3/11/2025
 
